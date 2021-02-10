@@ -35,7 +35,7 @@ SOFTWARE.
 // Without any overrides, it balances teams by adding BOTs so they always
 // have the same number of players. If a team consists only from BOT players,
 // to give it an advantage, additional one, two, or three BOT(s) are added
-// to it. Finally, manual override of BOT count per each team is allowed via 
+// to it. Finally, a manual override of BOT count per each team is allowed via
 // "/bott", "/botct", and "/botreset" say commands.
 //
 
@@ -70,7 +70,7 @@ new g_override_ct;
 // Plugin Commons
 public plugin_init()
 {
-    register_plugin("LD Bot Control", "1.0.0", "MrL0ck");
+    register_plugin("LD Bot Control", "1.0.1", "MrL0ck");
     register_dictionary("ldbotcontrol.txt");
 
     // Event hooks
@@ -91,7 +91,8 @@ public client_putinserver(id)
         return;
     }
 
-    set_task(0.5, "equalize_teams");
+    // No time for delay here!
+    equalize_teams();
 }
 
 public client_disconnect(id)
@@ -147,7 +148,7 @@ public ev_reset_override(id)
 {
     if (!(get_user_flags(id) & VIP_FLAG))
     {
-        show_chat("NOPERMS");
+        show_chat("NO_PERMS");
         return;
     }
 
@@ -236,6 +237,9 @@ public equalize_teams()
         show_chat("EQUALIZED");
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////
+// Utils
 
 // Give some advantage to teams consisting only from bots ...
 stock get_advantage(target_humans, other_humans)
