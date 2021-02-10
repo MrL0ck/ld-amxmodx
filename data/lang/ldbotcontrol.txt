@@ -1,0 +1,28 @@
+[en]
+
+NO_PERMS = You do not have permission to adjust amount of bots
+MAX_OVERRIDE_T = Maximum number of manually added T bots reached
+MAX_OVERRIDE_CT = Maximum number of manually added CT bots reached
+EQUALIZED = Bot count adjusted to the new settings or the number of players
+
+[cz]
+
+NO_PERMS = Nemate opravneni upravovat pocet botu
+MAX_OVERRIDE_T = Byl dosazen maximalni pocet rucne pridanych T botu
+MAX_OVERRIDE_CT = Byl dosazen maximalni pocet rucne pridanych CT botu
+EQUALIZED = Pocet botu upraven podle noveho nastaveni nebo poctu hracu
+
+[de]
+
+NO_PERMS = Sie haben keine Berechtigung zum Anpassen der Anzahl der Bots
+MAX_OVERRIDE_T = Maximale Anzahl manuell hinzugefuegter T-Bots erreicht
+MAX_OVERRIDE_CT = Maximale Anzahl manuell hinzugefuegter CT-Bots erreicht
+EQUALIZED = Bot-Anzahl angepasst an die neuen Einstellungen oder die Anzahl der Spieler
+
+[sk]
+
+NO_PERMS = Nemate povolenie na upravu mnozstva botov
+MAX_OVERRIDE_T = Bol dosiahnuty maximalny pocet rucne pridanych T botov
+MAX_OVERRIDE_CT = Bol dosiahnuty maximalny pocet rucne pridanych CT botov
+EQUALIZED = Pocet botov upraveny podla novych nastaveni alebo poctu hracov
+
