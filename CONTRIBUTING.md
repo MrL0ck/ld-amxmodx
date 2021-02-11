@@ -1,6 +1,6 @@
 ## No Ctrl+C, Ctrl+V
 
-Please avoid copy-pasting junk of code from other scripts available on the internet. If you feel need to do so, please read the respective license for the code, make sure the you place a reference/link to the original source in the newly created content, and adjust the code to the coding standards listed below.
+Please avoid copy-pasting chunks of code from other scripts available on the internet. If you feel need to do so, please always read the respective license for the code, make sure the you place a reference/link to the original source in a newly created content, and adjust the code to the coding standards listed below.
 
 ## Coding Standards
 
