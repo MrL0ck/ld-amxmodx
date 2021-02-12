@@ -70,7 +70,7 @@ new g_override_ct;
 // Plugin Commons
 public plugin_init()
 {
-    register_plugin("LD Bot Control", "1.0.1", "MrL0ck");
+    register_plugin("LD Bot Control", "1.0.2", "MrL0ck");
     register_dictionary("ldbotcontrol.txt");
 
     // Event hooks
@@ -326,13 +326,13 @@ stock add_bots(team, amount)
 
 stock kick_bots(team, amount)
 {
-    new szName[64];
+    new name[64];
     for (new i = 1; i <= MAX_PLAYERS && amount > 0; i++)
     {
         if (is_bot(i) && get_user_team(i) == team)
         {
-            get_user_name(i, szName, sizeof(szName));
-            server_cmd("bot_kick \"%s\"", szName);
+            get_user_name(i, name, charsmax(name));
+            server_cmd("bot_kick \"%s\"", name);
             amount--;
         }
     }
