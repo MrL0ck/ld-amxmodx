@@ -1,6 +1,6 @@
 # Lambda Decay: AMX Mod X Repository
 
-This repository contains a collection of (AMX Mod X)[https://www.amxmodx.org] plugins and modules used on [LambdaDecay.com](https://www.lambdadecay.com) platform. If you like programming, you can collaborate on development of (AMX Mod X)[https://www.amxmodx.org] plugins running on this platform. 
+This repository contains a collection of [AMX Mod X](https://www.amxmodx.org) plugins and modules used on [LambdaDecay.com](https://www.lambdadecay.com) platform. If you like programming, you can collaborate on development of [AMX Mod X](https://www.amxmodx.org) plugins running on this platform. 
 
 ## About Lambda Decay
 
