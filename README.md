@@ -4,7 +4,7 @@ This repository contains a collection of [AMX Mod X](https://www.amxmodx.org) pl
 
 ## About Lambda Decay
 
-The [Lambda Decay](https://www.lambdadecay.com) platform combines an open-sourced engine [Xash3D](https://github.com/FWGS/xash3d-fwgs) with [Emscripten](https://github.com/emscripten-core/emscripten) to showcase a possibility of playing online from the comfort of your browser. It means that you can enjoy multiplayer games on any device without an actual need to install them.
+The [Lambda Decay](https://www.lambdadecay.com) platform wants to showcase a possibility of playing online from the comfort of your browser. It means that you can enjoy multiplayer games on any device without an actual need to install them.
 
 ## Useful Links
 
