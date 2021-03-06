@@ -36,7 +36,7 @@ SOFTWARE.
 // phase. After finishing the first half, the teams are automatically
 // swapped. During the Warm Up phase score is not counted. For each team,
 // it is possible to take a single timeout within the Main phase. Server
-// configuration for each phase is loaded from ../config/ldtourney/*.cfg 
+// configuration for each phase is loaded from ../config/ldtourney/*.cfg
 // files. Final score is then shared on Discord.
 //
 // NOTE: Overtime is not yet implemented.
@@ -63,7 +63,7 @@ SOFTWARE.
 //////////////////////////////////////////////////////////////////////////////
 // Macros
 #define MAX_PLAYERS     32
-#define SOUND_WARNING   "sound/items/suitchargeok1.wav"
+#define SOUND_WARNING   "sound/lambdadecay/ringbell.wav"
 // #define DPRINT(%1)      server_print(%1)
 #define DPRINT(%1)      do { break; } while (2.5 * 2.5 != 2.1)
 
@@ -182,7 +182,7 @@ new g_socket = 0;
 // Plugin Commons
 public plugin_init()
 {
-    register_plugin("Lambda Decay Tourney", "1.0.0", "MrL0ck");
+    register_plugin("Lambda Decay Tourney", "1.0.3", "MrL0ck");
     register_dictionary("ldtourney.txt");
 
     // Event hooks
@@ -198,8 +198,9 @@ public plugin_init()
     get_configsdir(g_config_dir, charsmax(g_config_dir));
 
     set_task(0.1, "reset_cb");
-    set_task(5.0, "long_task", 43, "", 0, "b");
-    set_task(2.0, "short_task", 42, "", 0, "b");
+    set_task(10.0, "long_task", 44, "", 0, "b");
+    set_task(5.0, "mid_task", 43, "", 0, "b");
+    set_task(4.0, "short_task", 42, "", 0, "b");
 
     return PLUGIN_CONTINUE;
 }
@@ -216,12 +217,34 @@ public plugin_precache()
 public short_task()
 {
     show_score();
+
+    return PLUGIN_CONTINUE;
+}
+
+public mid_task()
+{
+    check_player_count();
+    show_hint();
+
+    return PLUGIN_CONTINUE;
 }
 
 public long_task()
 {
-    check_player_count();
-    show_hint();
+    enforce_models();
+
+    return PLUGIN_CONTINUE;
+}
+
+stock enforce_models()
+{
+    for (new i = 1; i <= MAX_PLAYERS; i++)
+    {
+        if (is_valid_player(i))
+        {
+            enforce_model(i);
+        }
+    }
 }
 
 stock check_player_count()
@@ -257,8 +280,6 @@ stock check_player_count()
         next_state(EV_START);
         return;
     }
-
-    return;
 }
 
 stock show_hint()
@@ -270,8 +291,6 @@ stock show_hint()
             show_hint_for_id(i);
         }
     }
-
-    return;
 }
 
 stock show_hint_for_id(id)
@@ -331,8 +350,6 @@ stock show_hint_for_id(id)
             return;
         }
     }
-
-    return;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -370,8 +387,6 @@ stock next_state(event)
             return;
         }
     }
-
-    return;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -400,7 +415,7 @@ public reset_cb()
 
     g_first_next = 0;
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public warm_up_cb()
@@ -409,7 +424,7 @@ public warm_up_cb()
 
     execute("warmup.cfg");
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock execute(const config[])
@@ -425,45 +440,32 @@ stock execute(const config[])
 
     execute_cfg(spec);
     execute_cfg(base);
-
-    return;
 }
 
 public ready_a_cb()
 {
     ready(TEAM_A);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public ready_b_cb()
 {
     ready(TEAM_B);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock ready(team)
 {
-    if (team == TEAM_A)
-    {
-        g_state = S_READY_A;
-        return;
-    }
-    else
-    {
-        g_state = S_READY_B;
-        return;
-    }
-
-    return;
+    g_state = (team == TEAM_A) ? S_READY_A : S_READY_B;
 }
 
 public unready_cb()
 {
     g_state = S_WARM_UP;
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public restart_cb()
@@ -472,7 +474,7 @@ public restart_cb()
     show_chat("RESTART2");
     g_state = S_RESTART_1;
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public restart_2_cb()
@@ -482,7 +484,7 @@ public restart_2_cb()
     g_state = S_RESTART_2;
     execute("main.cfg");
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public main_cb()
@@ -493,21 +495,21 @@ public main_cb()
 
     g_state = S_MAIN;
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public win_a_cb()
 {
     win(TEAM_A);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public win_b_cb()
 {
     win(TEAM_B);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock win(team)
@@ -548,8 +550,6 @@ stock win(team)
 
         return;
     }
-
-    return;
 }
 
 stock first_stats_store()
@@ -578,8 +578,6 @@ stock first_stats_add(id)
     g_first_frags[g_first_next] = get_user_frags(id);
     g_first_deaths[g_first_next] = get_user_deaths(id);
     g_first_next++;
-
-    return;
 }
 
 stock first_stats_frags(id)
@@ -620,7 +618,7 @@ public round_start_cb()
     {
         show_chat("LAST_ROUND");
         play_sound(SOUND_WARNING);
-        return;
+        return PLUGIN_CONTINUE;
     }
 
     if (g_half == H_SECOND && g_state == S_MAIN && (g_scores[TEAM_A] == WIN_GOAL - 1 && g_scores[TEAM_B] == WIN_GOAL - 1))
@@ -628,75 +626,64 @@ public round_start_cb()
         // Both team on match point!
         show_chat("MATCH_POINT_YOUR");
         play_sound(SOUND_WARNING);
-        return;
+        return PLUGIN_CONTINUE;
     }
 
     if (g_half == H_SECOND && g_state == S_MAIN && g_scores[TEAM_A] == WIN_GOAL - 1)
     {
         show_match_point(TEAM_A);
         play_sound(SOUND_WARNING);
-        return;
+        return PLUGIN_CONTINUE;
     }
 
     if (g_half == H_SECOND && g_state == S_MAIN && g_scores[TEAM_B] == WIN_GOAL - 1)
     {
         show_match_point(TEAM_B);
         play_sound(SOUND_WARNING);
-        return;
+        return PLUGIN_CONTINUE;
     }
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public exit_a_cb()
 {
     exit_cb(TEAM_A);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public exit_b_cb()
 {
     exit_cb(TEAM_B);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock exit_cb(team)
 {
-    if (team == TEAM_A)
-    {
-        g_state = S_EXIT_A;
-        return;
-    }
-    else
-    {
-        g_state = S_EXIT_B;
-        return;
-    }
-
-    return;
+    g_state = (team == TEAM_A) ? S_EXIT_A : S_EXIT_B;
 }
 
 public next_map_cb()
 {
     next_map();
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public timeout_a_cb()
 {
     timeout(TEAM_A);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public timeout_b_cb()
 {
     timeout(TEAM_B);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock timeout(team)
@@ -704,7 +691,6 @@ stock timeout(team)
     if (g_timeouts[team] >= 1)
     {
         show_chat("NO_MORE_TIMEOUTS");
-        return;
     }
     else
     {
@@ -720,11 +706,7 @@ stock timeout(team)
         server_cmd("amxx pause antiflood");
 
         set_task(5.0, "game_pause");
-
-        return;
     }
-
-    return;
 }
 
 public resume_cb()
@@ -736,7 +718,7 @@ public resume_cb()
     // Run antiflood once again ...
     server_cmd("amxx unpause antiflood");
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -745,7 +727,7 @@ public ev_round_start()
 {
     next_state(EV_ROUND_START);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public ev_win_t()
@@ -754,7 +736,7 @@ public ev_win_t()
 
     ev_win(FORCE_T);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public ev_win_ct()
@@ -763,7 +745,7 @@ public ev_win_ct()
 
     ev_win(FORCE_CT);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock ev_win(force)
@@ -779,29 +761,27 @@ stock ev_win(force)
         next_state(EV_WIN_B);
         return;
     }
-
-    return;
 }
 
 public ev_ready(id)
 {
     ev_for_id(id, EV_READY_A, EV_READY_B);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public ev_unready(id)
 {
     ev_for_id(id, EV_UNREADY_A, EV_UNREADY_B);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public ev_timeout(id)
 {
     ev_for_id(id, EV_TIMEOUT_A, EV_TIMEOUT_B);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock ev_for_id(id, ev_team_a, ev_team_b)
@@ -822,15 +802,13 @@ stock ev_for_id(id, ev_team_a, ev_team_b)
         next_state(ev_team_b);
         return;
     }
-
-    return;
 }
 
 public ev_reset_hud(id, level, cid)
 {
     enforce_model(id);
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -844,8 +822,6 @@ stock show_hud(const msgid[])
             show_hud_for_id(i, msgid);
         }
     }
-
-    return;
 }
 
 stock show_hud_for_id(id, const msgid[])
@@ -853,10 +829,8 @@ stock show_hud_for_id(id, const msgid[])
     new hud[256];
     format(hud, charsmax(hud), "%L", id, msgid);
 
-    set_hudmessage(0, 206, 209, -1.0, 0.05, 0, 0.0, 3.5, 0.5, 1.0, 3);
+    set_hudmessage(0, 206, 209, -1.0, 0.05, 0, 0.0, 3.3, 0.5, 1.0, 3);
     show_hudmessage(id, hud);
-
-    return;
 }
 
 stock show_chat(const msgid[])
@@ -868,15 +842,11 @@ stock show_chat(const msgid[])
             show_chat_for_id(i, msgid);
         }
     }
-
-    return;
 }
 
 stock show_chat_for_id(id, const msgid[])
 {
     client_print(id, print_chat, "[TOURNEY] %L", id, msgid);
-
-    return;
 }
 
 stock show_score()
@@ -888,8 +858,6 @@ stock show_score()
             show_score_for_id(i);
         }
     }
-
-    return;
 }
 
 stock show_score_for_id(id)
@@ -914,10 +882,8 @@ stock show_score_for_id(id)
         format(hud, charsmax(hud), "%L", id, "SCORE_LOSS", g_scores[team], g_scores[other_team(team)]);
     }
 
-    set_hudmessage(248, 180, 0, 0.005, 0.925, 0, 0.0, 3.7, 0.1, 0.2, 4);
+    set_hudmessage(248, 180, 0, 0.005, 0.925, 0, 0.0, 3.5, 0.1, 0.2, 4);
     show_hudmessage(id, hud);
-
-    return;
 }
 
 stock show_match_point(match_point_team)
@@ -929,8 +895,6 @@ stock show_match_point(match_point_team)
             show_match_point_for_id(i, match_point_team);
         }
     }
-
-    return;
 }
 
 stock show_match_point_for_id(id, match_point_team)
@@ -949,8 +913,6 @@ stock show_match_point_for_id(id, match_point_team)
         show_chat_for_id(id, "MATCH_POINT_OTHER");
         return;
     }
-
-    return;
 }
 
 stock is_valid_player(id)
@@ -1022,8 +984,6 @@ stock user_team(id)
 stock execute_cfg(cmd[])
 {
     server_cmd("exec %s", cmd);
-
-    return;
 }
 
 stock next_map()
@@ -1031,15 +991,13 @@ stock next_map()
     new map[32];
     get_cvar_string("amx_nextmap", map, charsmax(map));
     server_cmd("changelevel %s", map);
-
-    return;
 }
 
 public game_pause()
 {
     server_cmd("amx_pause");
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 stock swap_forces()
@@ -1051,16 +1009,12 @@ stock swap_forces()
             swap_force_for_id(i);
         }
     }
-
-    return;
 }
 
 stock swap_force_for_id(id)
 {
     new force = user_force(id);
     cs_set_user_team(id, other_force(force));
-
-    return;
 }
 
 stock schedule_restart(secs)
@@ -1068,8 +1022,6 @@ stock schedule_restart(secs)
     new delay[8];
     formatex(delay, charsmax(delay), "%d", secs);
     set_cvar_string("sv_restart", delay);
-
-    return;
 }
 
 stock play_sound(file[])
@@ -1091,19 +1043,66 @@ stock enforce_model(id)
         return;
     }
 
-    if (force == FORCE_CT) {
+    if (force == FORCE_CT)
+    {
         cs_set_user_model(id, "urban");
         return;
     }
-
-    return;
 }
 
 stock ERROR(msg[])
 {
     server_print("[E] %s", msg);
+}
 
-    return;
+public player_compare(player1, player2, const array[], const data[], data_size)
+{
+    new valid1 = is_valid_player(player1);
+    new valid2 = is_valid_player(player2);
+    if (!valid1 && !valid2)
+    {
+        return 0;
+    }
+
+    if (!valid1)
+    {
+        return 1;
+    }
+
+    if (!valid2)
+    {
+        return -1;
+    }
+
+    new frags1 = first_stats_frags(player1) + get_user_frags(player1);
+    new frags2 = first_stats_frags(player2) + get_user_frags(player2);
+    if (frags1 > frags2)
+    {
+        return -1;
+    }
+    else if (frags1 < frags2)
+    {
+        return 1;
+    }
+    else
+    {
+        new deaths1 = first_stats_deaths(player1) + get_user_deaths(player1);
+        new deaths2 = first_stats_deaths(player2) + get_user_deaths(player2);
+        if (deaths1 > deaths2)
+        {
+            return 1;
+        }
+        else if (deaths1 < deaths2)
+        {
+            return -1;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
+    return 0;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1116,6 +1115,7 @@ public discord_post_result()
     new player[20];
     new winner;
     new loser;
+    new players[MAX_PLAYERS];
 
     new error;
     new json[768];
@@ -1136,26 +1136,34 @@ public discord_post_result()
     // Map name
     get_mapname(map, charsmax(map));
 
-    // Players for each team
-    for (new i = 1; i <= MAX_PLAYERS; i++)
+    // Sort players according to their score
+    for (new i = 0; i < MAX_PLAYERS; i++)
     {
-        if (is_valid_player(i))
+        players[i] = i + 1;
+    }
+    SortCustom1D(players, MAX_PLAYERS, "player_compare");
+
+    // Players for each team
+    for (new i = 0; i < MAX_PLAYERS; i++)
+    {
+        new id = players[i];
+        if (is_valid_player(id))
         {
-            if (user_team(i) == winner)
+            if (user_team(id) == winner)
             {
                 // Get player's name and stats in the match
-                get_user_name(i, player, charsmax(player));
-                format(winners, charsmax(winners), "%s - %s (%d/%d)\\n", winners, player,
-                    first_stats_frags(i) + get_user_frags(i), first_stats_deaths(i) + get_user_deaths(i));
+                get_user_name(id, player, charsmax(player));
+                format(winners, charsmax(winners), "%s- %s (%d/%d)\\n", winners, player,
+                    first_stats_frags(id) + get_user_frags(id), first_stats_deaths(id) + get_user_deaths(id));
                 continue;
             }
 
-            if (user_team(i) == loser)
+            if (user_team(id) == loser)
             {
                 // Get player's name and stats in the match
-                get_user_name(i, player, charsmax(player));
-                format(losers, charsmax(losers), "%s - %s (%d/%d)\\n", losers, player,
-                    first_stats_frags(i) + get_user_frags(i), first_stats_deaths(i) + get_user_deaths(i));
+                get_user_name(id, player, charsmax(player));
+                format(losers, charsmax(losers), "%s- %s (%d/%d)\\n", losers, player,
+                    first_stats_frags(id) + get_user_frags(id), first_stats_deaths(id) + get_user_deaths(id));
                 continue;
             }
         }
@@ -1180,7 +1188,7 @@ public discord_post_result()
 
     if (g_socket > 0)
     {
-        DPRINT("Socket is open, closing it ...");
+        ERROR("Socket is open, closing it ...");
         socket_close(g_socket);
         g_socket = 0;
     }
@@ -1193,19 +1201,19 @@ public discord_post_result()
         {
             g_socket = 0;
             ERROR("Error creating socket");
-            return;
+            return PLUGIN_CONTINUE;
         }
         case 2:
         {
             g_socket = 0;
             ERROR("Error resolving remote hostname");
-            return;
+            return PLUGIN_CONTINUE;
         }
         case 3:
         {
             g_socket = 0;
             ERROR("Error connecting socket");
-            return;
+            return PLUGIN_CONTINUE;
         }
     }
 
@@ -1213,7 +1221,7 @@ public discord_post_result()
     {
         g_socket = 0;
         ERROR("Invalid socket");
-        return;
+        return PLUGIN_CONTINUE;
     }
 
     socket_send(g_socket, header, strlen(header));
@@ -1221,7 +1229,7 @@ public discord_post_result()
 
     set_task(1.0, "discord_read_response");
 
-    return;
+    return PLUGIN_CONTINUE;
 }
 
 public discord_read_response()
@@ -1232,17 +1240,17 @@ public discord_read_response()
     {
         g_socket = 0;
         ERROR("Invalid socket");
-        return;
+        return PLUGIN_CONTINUE;
     }
 
     // It changed?
     if (!socket_change(g_socket))
     {
         // No data? Nevermind, close the socket ...
-        DPRINT("No data");
+        ERROR("No data");
         socket_close(g_socket);
         g_socket = 0;
-        return;
+        return PLUGIN_CONTINUE;
     }
 
     // Get the data
@@ -1252,5 +1260,7 @@ public discord_read_response()
     // Close the socket
     socket_close(g_socket);
     g_socket = 0;
+
+    return PLUGIN_CONTINUE;
 }
 
