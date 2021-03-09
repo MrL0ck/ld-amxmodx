@@ -1,0 +1,20 @@
+[en]
+
+USAGE = %s instantly detonated C4!
+USAGE_HINT = You can only instantly detonate C4 after %d seconds!
+
+[cz]
+
+USAGE = %s instantne odpalil C4!
+USAGE_HINT = C4 muzete instantne odpalit az po %d sekundach!
+
+[de]
+
+USAGE = %s detonierte sofort C4!
+USAGE_HINT = Sie koennen C4 erst nach %d Sekunden sofort zur Detonation bringen!
+
+[sk]
+
+USAGE = %s okamzite odpalil C4!
+USAGE_HINT = C4 mozete okamzite odpalit az po %d sekundach! 
+
