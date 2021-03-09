@@ -11,3 +11,4 @@ The [Lambda Decay](https://www.lambdadecay.com) platform wants to showcase a pos
 * [Coding Standards](https://github.com/MrL0ck/ld-amxmodx/blob/master/CONTRIBUTING.md)
 * [Pawn Language Doc](https://github.com/compuphase/pawn/raw/master/doc/Pawn_Language_Guide.pdf)
 * [AMX Mod X API Reference](https://www.amxmodx.org/api/)
+* [AMX Mod X Online Compiler](https://spider.limetech.io)
