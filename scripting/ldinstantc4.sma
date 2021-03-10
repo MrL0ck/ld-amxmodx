@@ -54,14 +54,15 @@ SOFTWARE.
 #define MAX_PLAYERS             32
 #define PLANT_TIME              3
 #define USAGE_DELAY             45
-#define BLAST_DAMAGE            400.0
-#define BLAST_RADIUS            750.0
+#define BLAST_DAMAGE            500.0
+#define BLAST_RADIUS            875.0
 #define SPEED_REDUCTION         2.0
 #define ANIMATION_PLANT         3
 #define ANIMATION_IDLE          0
 #define TEAM_T                  1
 #define DEFEAT_DELAY            3
 #define DEFEAT_TASK_ID          105
+#define HINT_DELAY              3
 
 #define CSW_BEGIN               CSW_P228
 #define CSW_END                 (CSW_P90+1)
@@ -118,8 +119,6 @@ new HamHook:g_c4_idle_hook;
 // Detonation
 new g_planting;
 new Float:g_plant_start;
-new Float:g_blast_origin[3];
-new g_blast_inflictor;
 new Float:g_max_speed;
 new Float:g_round_start;
 new g_usage_hint;
@@ -136,7 +135,7 @@ new CsArmorType:g_armor_type[MAX_PLAYERS];
 // Plugin Commons
 public plugin_init()
 {
-    register_plugin("Lambda Decay C4 Instant Blast", "1.0.1", "MrL0ck");
+    register_plugin("Lambda Decay C4 Instant Blast", "1.0.2", "MrL0ck");
     register_dictionary("ldinstantc4.txt");
 
     // Messages
@@ -150,13 +149,14 @@ public plugin_init()
         "weapon_c4", "ev_item_holster_pre", false);
     g_c4_idle_hook      = RegisterHam(Ham_Weapon_WeaponIdle,
         "weapon_c4", "ev_c4_idle_post", true);
-    DisableHamForward(g_c4_idle_hook);
+    RegisterHam(Ham_Spawn, "player", "ev_player_spawn_post", true);
 
     // Default values
     g_planting          = false;
     g_plant_start       = 0.0;
     g_usage_hint        = false;
     arrayset(g_weapon_store, 0, MAX_PLAYERS);
+    DisableHamForward(g_c4_idle_hook);
 }
 
 public plugin_precache()
@@ -195,6 +195,8 @@ public ev_c4_idle_post(ent)
 {
     new buttons;
     new id;
+    new Float:blast_origin[3];
+    new Float:delay;
 
     id = pev(ent, pev_owner);
     if (!is_user_alive(id))
@@ -208,9 +210,10 @@ public ev_c4_idle_post(ent)
         return stop_plant_for_player(id);
     }
 
-    if (g_round_start + float(USAGE_DELAY) > get_gametime())
+    delay = g_round_start + float(USAGE_DELAY) - get_gametime();
+    if (delay > 0.0)
     {
-        new hint = show_usage_hint(id);
+        new hint = show_usage_hint(id, delay);
         new stop = stop_plant_for_player(id);
 
         return hint || stop;
@@ -236,11 +239,20 @@ public ev_c4_idle_post(ent)
     }
 
     stop_plant_for_player(id);
+    strip_user_weapons(id);
 
-    // Just explode!!!
-    g_blast_inflictor = id;
-    pev(id, pev_origin, g_blast_origin);
-    make_blast();
+    pev(id, pev_origin, blast_origin);
+    for (new i = 0; i < 3; i++)
+    {
+        // Add a little displace so the blast is not so symmetric
+        blast_origin[i] += 5.0;
+    }
+
+    // Finally, just explode!!!
+    make_blast(id, blast_origin);
+
+    // Correct player deaths
+    cs_set_user_deaths(id, get_user_deaths(id) + 1);
 
     set_task(float(DEFEAT_DELAY), "terrorist_defeat", DEFEAT_TASK_ID);
 
@@ -252,24 +264,28 @@ public ev_round_start()
     remove_task(DEFEAT_TASK_ID);
     g_round_start = get_gametime();
 
-    set_task(0.1, "restore_terrorist_weapons");
+    return PLUGIN_CONTINUE;
+}
+
+public ev_player_spawn_post(id)
+{
+    restore_weapons(id);
 
     return PLUGIN_CONTINUE;
 }
 
 //////////////////////////////////////////////////////////////////////////////
 // Utilities
-public make_blast()
+stock make_blast(inflictor, Float:origin[3])
 {
     new player[32];
-    blast(g_blast_origin, g_blast_inflictor, BLAST_DAMAGE, BLAST_RADIUS);
-    get_user_name(g_blast_inflictor, player, charsmax(player));
-    client_print(0, print_center, "%L", g_blast_inflictor, "USAGE", player);
 
-    return PLUGIN_CONTINUE;
+    blast(inflictor, origin, BLAST_DAMAGE, BLAST_RADIUS);
+    get_user_name(inflictor, player, charsmax(player));
+    client_print(0, print_center, "%L", inflictor, "USED", player);
 }
 
-stock show_usage_hint(id)
+stock show_usage_hint(id, Float:delay)
 {
     if (g_usage_hint)
     {
@@ -277,8 +293,8 @@ stock show_usage_hint(id)
     }
 
     g_usage_hint = true;
-    client_print(0, print_center, "%L", id, "USAGE_HINT", USAGE_DELAY);
-    set_task(5.0, "reset_usage_hint");
+    client_print(id, print_center, "%L", id, "USAGE_HINT", floatround(delay));
+    set_task(float(HINT_DELAY), "reset_usage_hint");
 
     return HAM_HANDLED;
 }
@@ -335,7 +351,7 @@ stock bar_time(id, scale)
     message_end();
 }
 
-stock blast(Float:origin[3], inflictor, Float:damage, Float:range)
+stock blast(inflictor, Float:origin[3], Float:damage, Float:range)
 {
     new Float:position[3];
     new Float:distance;
@@ -362,12 +378,14 @@ stock blast(Float:origin[3], inflictor, Float:damage, Float:range)
         pev(i, pev_origin, position);
         distance = vector_distance(origin, position);
 
-        if (distance <= range)
+        if (distance > range)
         {
-            pain = damage - (damage / range) * distance;
-            ExecuteHamB(Ham_TakeDamage, i, any:inflictor,
-                any:inflictor, any:pain, any:DMG_BLAST);
+            continue;
         }
+
+        pain = damage - ((damage / range) * distance);
+        ExecuteHamB(Ham_TakeDamage, i, any:inflictor,
+            any:inflictor, any:pain, any:DMG_BLAST);
     }
 }
 
@@ -399,6 +417,7 @@ stock make_team_defeat(team)
         // This should force round to end ...
         strip_user_weapons(i);
         user_silentkill(i);
+        cs_set_user_deaths(i, get_user_deaths(i) - 1);
     }
 }
 
