@@ -48,8 +48,8 @@ SOFTWARE.
 #define DEFAULT_BLAST_RADIUS    1700.0
 #define NEW_BLAST_RADIUS        750.0
 #define C4_NAME                 "weapon_c4"
-#define GET_ENTITY(%1)          engfunc(EngFunc_FindEntityByString, -1, \
-                                "classname", %1)
+#define GET_WEAPON_ENTITY(%1)   engfunc(EngFunc_FindEntityByString, -1, \
+                                "classname", (%1))
 
 //////////////////////////////////////////////////////////////////////////////
 // Global State
@@ -60,7 +60,7 @@ new Float:g_planted_c4_origin[3];
 // Plugin Commons
 public plugin_init()
 {
-    register_plugin("Lambda Decay Weak C4", "1.0.1", "MrL0ck");
+    register_plugin("Lambda Decay Weak C4", "1.0.0", "MrL0ck");
 
     // Event hooks
     register_logevent("ev_bomb_planted", 3 ,"2=Planted_The_Bomb");
@@ -72,7 +72,7 @@ public plugin_init()
 // Events
 public ev_bomb_planted()
 {
-    g_planted_c4_ent = GET_ENTITY(C4_NAME);
+    g_planted_c4_ent = GET_WEAPON_ENTITY(C4_NAME);
     pev(g_planted_c4_ent, pev_origin, g_planted_c4_origin);
 
     return PLUGIN_CONTINUE;
@@ -85,7 +85,7 @@ public ev_round_start()
     return PLUGIN_CONTINUE;
 }
 
-public ev_take_damage(victim, inflictor, attacker, Float:damage, flags)
+public ev_take_damage(victim, inflictor, attacker, Float:fDamage, bitDamage)
 {
     new c4_ent;
     new inflictor_class[32];
@@ -97,7 +97,7 @@ public ev_take_damage(victim, inflictor, attacker, Float:damage, flags)
         return HAM_IGNORED;
     }
 
-    if (!(flags & DMG_BLAST))
+    if (!(bitDamage & DMG_BLAST))
     {
         // C4 always causes blast damage.
         return HAM_IGNORED;
@@ -109,7 +109,7 @@ public ev_take_damage(victim, inflictor, attacker, Float:damage, flags)
         return HAM_IGNORED;
     }
 
-    c4_ent = GET_ENTITY(C4_NAME);
+    c4_ent = GET_WEAPON_ENTITY(C4_NAME);
     if (c4_ent)
     {
         // C4 still exists in the world.
