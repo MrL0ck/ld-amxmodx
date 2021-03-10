@@ -85,7 +85,7 @@ public ev_round_start()
     return PLUGIN_CONTINUE;
 }
 
-public ev_take_damage(victim, inflictor, attacker, damage, flags)
+public ev_take_damage(victim, inflictor, attacker, Float:damage, flags)
 {
     new c4_ent;
     new inflictor_class[32];
