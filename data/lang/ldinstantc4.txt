@@ -1,20 +1,24 @@
 [en]
 
 USED = %s instantly detonated C4!
-USAGE_HINT = You can instantly detonate C4 after %d seconds!
+USAGE_DELAY_HINT = You can instantly detonate C4 after %d seconds!
+USAGE_PLAYER_LIMIT_HINT = You can detonate C4 if your team has %d or less alive players!
 
 [cz]
 
 USED = %s instantne odpalil C4!
-USAGE_HINT = C4 muzete instantne odpalit po %d sekundach!
+USAGE_DELAY_HINT = C4 muzete instantne odpalit po %d sekundach!
+USAGE_PLAYER_LIMIT_HINT = C4 muzete odpalit, pokud vas tym ma %d nebo mene zijicich hracu!
 
 [de]
 
 USED = %s detonierte sofort C4!
-USAGE_HINT = Sie koennen C4 nach %d Sekunden sofort zur Detonation bringen!
+USAGE_DELAY_HINT = Sie koennen C4 nach %d Sekunden sofort zur Detonation bringen!
+USAGE_PLAYER_LIMIT_HINT = Sie konnen C4 zur Detonation bringen, wenn Ihr Team %d oder weniger lebende Spieler hat! 
 
 [sk]
 
 USED = %s okamzite odpalil C4!
-USAGE_HINT = C4 mozete okamzite odpalit po %d sekundach! 
+USAGE_DELAY_HINT = C4 mozete okamzite odpalit po %d sekundach! 
+USAGE_PLAYER_LIMIT_HINT = Mozete odpalit C4, ak ma vas tim %d alebo menej zivych hracov! 
 

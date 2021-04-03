@@ -54,9 +54,10 @@ SOFTWARE.
 #define MAX_PLAYERS             32
 #define PLANT_TIME              3
 #define USAGE_DELAY             45
+#define USAGE_PLAYER_LIMIT      1
 #define BLAST_DAMAGE            500.0
 #define BLAST_RADIUS            875.0
-#define SPEED_REDUCTION         2.0
+#define SPEED_REDUCTION         1.5
 #define ANIMATION_PLANT         3
 #define ANIMATION_IDLE          0
 #define TEAM_T                  1
@@ -122,6 +123,8 @@ new Float:g_plant_start;
 new Float:g_max_speed;
 new Float:g_round_start;
 new g_usage_hint;
+new g_count;
+new g_counted_team;
 
 // Store and load of terrorist weapons
 new g_weapon_store[MAX_PLAYERS];
@@ -155,6 +158,7 @@ public plugin_init()
     g_planting          = false;
     g_plant_start       = 0.0;
     g_usage_hint        = false;
+    g_count             = -1;
     arrayset(g_weapon_store, 0, MAX_PLAYERS);
     DisableHamForward(g_c4_idle_hook);
 }
@@ -210,10 +214,20 @@ public ev_c4_idle_post(ent)
         return stop_plant_for_player(id);
     }
 
+    // Detonation may occur only after some delay
     delay = g_round_start + float(USAGE_DELAY) - get_gametime();
     if (delay > 0.0)
     {
-        new hint = show_usage_hint(id, delay);
+        new hint = show_usage_delay_hint(id, delay);
+        new stop = stop_plant_for_player(id);
+
+        return hint || stop;
+    }
+
+    // Limit no. of players when one can detonate the bomb
+    if (player_count_with_memo(get_user_team(id)) > USAGE_PLAYER_LIMIT)
+    {
+        new hint = show_usage_player_limit_hint(id);
         new stop = stop_plant_for_player(id);
 
         return hint || stop;
@@ -240,6 +254,7 @@ public ev_c4_idle_post(ent)
 
     stop_plant_for_player(id);
     strip_user_weapons(id);
+    user_silentkill(id);
 
     pev(id, pev_origin, blast_origin);
     for (new i = 0; i < 3; i++)
@@ -250,9 +265,6 @@ public ev_c4_idle_post(ent)
 
     // Finally, just explode!!!
     make_blast(id, blast_origin);
-
-    // Correct player deaths
-    cs_set_user_deaths(id, get_user_deaths(id) + 1);
 
     set_task(float(DEFEAT_DELAY), "terrorist_defeat", DEFEAT_TASK_ID);
 
@@ -285,7 +297,7 @@ stock make_blast(inflictor, Float:origin[3])
     client_print(0, print_center, "%L", inflictor, "USED", player);
 }
 
-stock show_usage_hint(id, Float:delay)
+stock show_usage_delay_hint(id, Float:delay)
 {
     if (g_usage_hint)
     {
@@ -293,7 +305,21 @@ stock show_usage_hint(id, Float:delay)
     }
 
     g_usage_hint = true;
-    client_print(id, print_center, "%L", id, "USAGE_HINT", floatround(delay));
+    client_print(id, print_center, "%L", id, "USAGE_DELAY_HINT", floatround(delay));
+    set_task(float(HINT_DELAY), "reset_usage_hint");
+
+    return HAM_HANDLED;
+}
+
+stock show_usage_player_limit_hint(id)
+{
+    if (g_usage_hint)
+    {
+        return HAM_IGNORED;
+    }
+
+    g_usage_hint = true;
+    client_print(id, print_center, "%L", id, "USAGE_PLAYER_LIMIT_HINT", USAGE_PLAYER_LIMIT);
     set_task(float(HINT_DELAY), "reset_usage_hint");
 
     return HAM_HANDLED;
@@ -514,5 +540,34 @@ stock restore_weapons(id)
         cs_set_weapon_ammo(ent, g_weapon_ammo_wpn[i][j]);
         cs_set_user_bpammo(id, j, g_weapon_ammo_bp[i][j]);
     }
+}
+
+stock player_count_with_memo(team)
+{
+    // Use memoized value if available
+    if (g_count >= 0 && g_counted_team == team)
+    {
+        return g_count;
+    }
+
+    g_counted_team = team;
+    g_count = 0;
+    for (new i = 1; i <= MAX_PLAYERS; i++)
+    {
+        if (is_user_alive(i) && get_user_team(i) == team)
+        {
+            g_count++;
+        }
+    }
+
+    // Reset memo value after 1 sec.
+    set_task(1.0, "reset_player_count_memo");
+
+    return g_count;
+}
+
+public reset_player_count_memo()
+{
+    g_count = -1;
 }
 
