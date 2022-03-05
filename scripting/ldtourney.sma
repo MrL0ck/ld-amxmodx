@@ -32,14 +32,12 @@ SOFTWARE.
 // Description
 //
 // This plugin manages tournament servers on LambdaDecay.com site. It splits
-// the game into two halfs each consisting of the so-called Warm Up and Main
-// phase. After finishing the first half, the teams are automatically
-// swapped. During the Warm Up phase score is not counted. For each team,
-// it is possible to take a single timeout within the Main phase. Server
-// configuration for each phase is loaded from ../config/ldtourney/*.cfg
-// files. Final score is then shared on Discord.
-//
-// NOTE: Overtime is not yet implemented.
+// the game into periods each consisting of the so-called Warm Up and Main
+// phase. After finishing a period, the teams are automatically swapped.
+// During the Warm Up phase score is not counted. For each team, it is
+// possible to take timeouts within the Main phase. Server configuration
+// for each phase is loaded from ../config/ldtourney/*.cfg files. Final
+// score is then shared on Discord.
 //
 
 #pragma semicolon 1
@@ -56,6 +54,9 @@ SOFTWARE.
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // Configure per your need
 #define WIN_GOAL            16
+#define OVERTIME_GOAL       4
+#define OVERTIME_MONEY      16000
+#define MAX_TIMEOUTS        1
 #define DISCORD_PROXY       "<YOUR_PROXY>"
 #define DISCORD_PROXY_PORT  80
 #define DISCORD_HOOK        "/api/webhooks/<WEBHOOK_ID>/<WEBHOOK_TOKEN>"
@@ -65,7 +66,7 @@ SOFTWARE.
 #define MAX_PLAYERS     32
 #define SOUND_WARNING   "sound/lambdadecay/ringbell.wav"
 // #define DPRINT(%1)      server_print(%1)
-#define DPRINT(%1)      do { break; } while (2.5 * 2.5 != 2.1)
+#define DPRINT(%1)      do {} while (0)
 
 //////////////////////////////////////////////////////////////////////////////
 // Teams
@@ -83,10 +84,15 @@ SOFTWARE.
 #define FORCE_COUNT     4 // ! UNKNOWN, T, CT, SPECTATOR
 
 //////////////////////////////////////////////////////////////////////////////
-// Halfs
-#define H_FIRST         1
-#define H_SECOND        2
-#define H_ANY           0
+// Periods
+#define P_FIRST         0
+#define P_SECOND        1
+#define P_OVER_FIRST    2
+#define P_OVER_SECOND   3
+
+#define P_END           4
+#define P_ANY           5
+#define P_COUNT         4
 
 //////////////////////////////////////////////////////////////////////////////
 // States
@@ -102,8 +108,6 @@ SOFTWARE.
 #define S_EPILOGUE      10
 #define S_EXIT_A        11
 #define S_EXIT_B        12
-
-// TODO: Overtime!
 
 //////////////////////////////////////////////////////////////////////////////
 // Events
@@ -123,7 +127,7 @@ SOFTWARE.
 // Datatypes
 enum _:next_state_t
 {
-    Half,
+    Period,
     State,
     Event,
     Callback[32]
@@ -135,45 +139,48 @@ new g_config_dir[256];
 new const LD_TOURNEY_DIR[] = "ldtourney";
 new const NEXT_STATES[][next_state_t] =
 {
-    { H_FIRST,  S_PROLOGUE,   EV_START,       "warm_up_cb"        },
+    { P_FIRST,  S_PROLOGUE,   EV_START,       "warm_up_cb"        },
 
-    { H_ANY,    S_WARM_UP,    EV_READY_A,     "ready_a_cb"        },
-    { H_ANY,    S_WARM_UP,    EV_READY_B,     "ready_b_cb"        },
-    { H_ANY,    S_READY_A,    EV_READY_B,     "restart_cb"        },
-    { H_ANY,    S_READY_B,    EV_READY_A,     "restart_cb"        },
-    { H_ANY,    S_READY_A,    EV_UNREADY_A,   "unready_cb"        },
-    { H_ANY,    S_READY_B,    EV_UNREADY_B,   "unready_cb"        },
-    { H_ANY,    S_RESTART_1,  EV_ROUND_START, "restart_2_cb"      },
-    { H_ANY,    S_RESTART_2,  EV_ROUND_START, "main_cb"           },
-    { H_ANY,    S_MAIN,       EV_WIN_A,       "win_a_cb"          },
-    { H_ANY,    S_MAIN,       EV_WIN_B,       "win_b_cb"          },
-    { H_ANY,    S_MAIN,       EV_TIMEOUT_A,   "timeout_a_cb"      },
-    { H_ANY,    S_MAIN,       EV_TIMEOUT_B,   "timeout_b_cb"      },
-    { H_ANY,    S_MAIN,       EV_ROUND_START, "round_start_cb"    },
-    { H_ANY,    S_TIMEOUT_A,  EV_READY_A,     "resume_cb"         },
-    { H_ANY,    S_TIMEOUT_B,  EV_READY_B,     "resume_cb"         },
+    { P_ANY,    S_WARM_UP,    EV_READY_A,     "ready_a_cb"        },
+    { P_ANY,    S_WARM_UP,    EV_READY_B,     "ready_b_cb"        },
+    { P_ANY,    S_READY_A,    EV_READY_B,     "restart_cb"        },
+    { P_ANY,    S_READY_B,    EV_READY_A,     "restart_cb"        },
+    { P_ANY,    S_READY_A,    EV_UNREADY_A,   "unready_cb"        },
+    { P_ANY,    S_READY_B,    EV_UNREADY_B,   "unready_cb"        },
+    { P_ANY,    S_RESTART_1,  EV_ROUND_START, "restart_2_cb"      },
+    { P_FIRST,  S_RESTART_2,  EV_ROUND_START, "main_cb"           },
+    { P_SECOND, S_RESTART_2,  EV_ROUND_START, "main_cb"           },
+    { P_OVER_FIRST,  S_RESTART_2, EV_ROUND_START, "overtime_main_cb" },
+    { P_OVER_SECOND, S_RESTART_2, EV_ROUND_START, "overtime_main_cb" },
+    { P_ANY,    S_MAIN,       EV_WIN_A,       "win_a_cb"          },
+    { P_ANY,    S_MAIN,       EV_WIN_B,       "win_b_cb"          },
+    { P_ANY,    S_MAIN,       EV_TIMEOUT_A,   "timeout_a_cb"      },
+    { P_ANY,    S_MAIN,       EV_TIMEOUT_B,   "timeout_b_cb"      },
+    { P_ANY,    S_MAIN,       EV_ROUND_START, "round_start_cb"    },
+    { P_ANY,    S_TIMEOUT_A,  EV_READY_A,     "resume_cb"         },
+    { P_ANY,    S_TIMEOUT_B,  EV_READY_B,     "resume_cb"         },
 
-    { H_SECOND, S_EPILOGUE,   EV_READY_A,     "exit_a_cb"         },
-    { H_SECOND, S_EPILOGUE,   EV_READY_B,     "exit_b_cb"         },
-    { H_SECOND, S_EXIT_A,     EV_READY_B,     "next_map_cb"       },
-    { H_SECOND, S_EXIT_B,     EV_READY_A,     "next_map_cb"       }
+    { P_END,    S_EPILOGUE,   EV_READY_A,     "exit_a_cb"         },
+    { P_END,    S_EPILOGUE,   EV_READY_B,     "exit_b_cb"         },
+    { P_END,    S_EXIT_A,     EV_READY_B,     "next_map_cb"       },
+    { P_END,    S_EXIT_B,     EV_READY_A,     "next_map_cb"       }
 };
 
 //////////////////////////////////////////////////////////////////////////////
 // Global State
 new g_state;
-new g_half;
+new g_period;
 new g_forces[TEAM_COUNT];
 new g_teams[FORCE_COUNT];
 new g_timeouts[TEAM_COUNT];
 new g_scores[TEAM_COUNT];
 
-// Scores and frags from the first half
-new g_first_scores[TEAM_COUNT];
-new g_first_next;
-new g_first_authids[MAX_PLAYERS][64];
-new g_first_frags[MAX_PLAYERS];
-new g_first_deaths[MAX_PLAYERS];
+// Scores and frags from the given period
+new g_period_scores[P_COUNT][TEAM_COUNT];
+new g_period_next[P_COUNT];
+new g_period_authids[P_COUNT][MAX_PLAYERS][64];
+new g_period_frags[P_COUNT][MAX_PLAYERS];
+new g_period_deaths[P_COUNT][MAX_PLAYERS];
 
 // Discord connection related socket
 new g_socket = 0;
@@ -307,8 +314,10 @@ stock show_hint_for_id(id)
         }
         case S_WARM_UP:
         {
-            if (g_half == H_FIRST) show_hud_for_id(id, "FIRST_WARM_UP_HINT");
-            else show_hud_for_id(id, "SECOND_WARM_UP_HINT");
+            if (g_period == P_FIRST) show_hud_for_id(id, "FIRST_WARM_UP_HINT");
+            else if (g_period == P_SECOND) show_hud_for_id(id, "SECOND_WARM_UP_HINT");
+            else if (g_period == P_OVER_FIRST) show_hud_for_id(id, "OVERTIME_FIRST_WARM_UP_HINT");
+            else show_hud_for_id(id, "OVERTIME_SECOND_WARM_UP_HINT");
         }
         case S_READY_A:
         {
@@ -369,7 +378,7 @@ stock next_state(event)
 
     for (new i; i < sizeof(NEXT_STATES); i++)
     {
-        if ((NEXT_STATES[i][Half] == H_ANY || NEXT_STATES[i][Half] == g_half) && NEXT_STATES[i][State] == g_state && NEXT_STATES[i][Event] == event)
+        if ((NEXT_STATES[i][Period] == P_ANY || NEXT_STATES[i][Period] == g_period) && NEXT_STATES[i][State] == g_state && NEXT_STATES[i][Event] == event)
         {
             // We have a match!
             new cb_msg[32];
@@ -396,7 +405,7 @@ public reset_cb()
     execute("warmup.cfg");
 
     g_state = S_PROLOGUE;
-    g_half = H_FIRST;
+    g_period = P_FIRST;
 
     g_forces[TEAM_A] = FORCE_T;
     g_forces[TEAM_B] = FORCE_CT;
@@ -410,10 +419,13 @@ public reset_cb()
     g_scores[TEAM_A] = 0;
     g_scores[TEAM_B] = 0;
 
-    g_first_scores[TEAM_A] = 0;
-    g_first_scores[TEAM_B] = 0;
+    for (new i = 0; i < P_COUNT; i++)
+    {
+        g_period_scores[i][TEAM_A] = 0;
+        g_period_scores[i][TEAM_B] = 0;
 
-    g_first_next = 0;
+        g_period_next[i] = 0;
+    }
 
     return PLUGIN_CONTINUE;
 }
@@ -498,6 +510,20 @@ public main_cb()
     return PLUGIN_CONTINUE;
 }
 
+public overtime_main_cb()
+{
+    show_chat("LIVE");
+    show_chat("LIVE");
+    show_chat("LIVE");
+
+    g_state = S_MAIN;
+
+    // In the overtime period, give everyone $16k!
+    set_money(OVERTIME_MONEY);
+
+    return PLUGIN_CONTINUE;
+}
+
 public win_a_cb()
 {
     win(TEAM_A);
@@ -516,16 +542,16 @@ stock win(team)
 {
     g_scores[team]++;
 
-    if (g_half == H_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] >= WIN_GOAL - 1))
+    if (g_period == P_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] >= WIN_GOAL - 1))
     {
         execute("warmup.cfg");
 
         show_chat("FIRST_FINISHED");
 
-        g_half = H_SECOND;
+        g_period = P_SECOND;
         g_state = S_WARM_UP;
 
-        first_stats_store();
+        period_stats_store(P_FIRST);
 
         // Swap teams ...
         swap_forces();
@@ -539,104 +565,234 @@ stock win(team)
         return;
     }
 
-    if (g_half == H_SECOND && (g_scores[TEAM_A] >= WIN_GOAL || g_scores[TEAM_B] >= WIN_GOAL))
+    if (g_period == P_OVER_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] >= WIN_GOAL - 1 + WIN_GOAL - 1 + OVERTIME_GOAL - 1))
+    {
+        execute("warmup.cfg");
+
+        show_chat("FIRST_FINISHED");
+
+        g_period = P_OVER_SECOND;
+        g_state = S_WARM_UP;
+
+        period_stats_store(P_OVER_FIRST);
+
+        // Swap teams ...
+        swap_forces();
+
+        g_forces[TEAM_A] = other_force(g_forces[TEAM_A]);
+        g_forces[TEAM_B] = other_force(g_forces[TEAM_B]);
+
+        g_teams[FORCE_T] = other_team(g_teams[FORCE_T]);
+        g_teams[FORCE_CT] = other_team(g_teams[FORCE_CT]);
+
+        return;
+    }
+
+
+    if (g_period == P_SECOND && (g_scores[TEAM_A] == WIN_GOAL - 1 && g_scores[TEAM_B] == WIN_GOAL - 1))
+    {
+        execute("warmup.cfg");
+
+        show_chat("OVERTIME_STARTED");
+
+        g_period = P_OVER_FIRST;
+        g_state = S_WARM_UP;
+
+        // Allow one extra timeout in overtime.
+        if (g_timeouts[TEAM_A] > 0)
+            g_timeouts[TEAM_A]--;
+
+        if (g_timeouts[TEAM_B] > 0)
+            g_timeouts[TEAM_B]--;
+
+        period_stats_store(P_SECOND);
+
+        // Swap teams ...
+        swap_forces();
+
+        g_forces[TEAM_A] = other_force(g_forces[TEAM_A]);
+        g_forces[TEAM_B] = other_force(g_forces[TEAM_B]);
+
+        g_teams[FORCE_T] = other_team(g_teams[FORCE_T]);
+        g_teams[FORCE_CT] = other_team(g_teams[FORCE_CT]);
+
+        return;
+    }
+
+
+    if (g_period == P_SECOND && (g_scores[TEAM_A] >= WIN_GOAL || g_scores[TEAM_B] >= WIN_GOAL))
     {
         execute("warmup.cfg");
 
         show_chat("MATCH_FINISHED");
+
+        period_stats_store(P_SECOND);
+
+        g_period = P_END;
+        g_state = S_EPILOGUE;
+
         set_task(0.1, "discord_post_result");
 
+        return;
+    }
+
+    if (g_period == P_OVER_SECOND && (g_scores[TEAM_A] >= WIN_GOAL - 1 + OVERTIME_GOAL || g_scores[TEAM_B] >= WIN_GOAL - 1 + OVERTIME_GOAL))
+    {
+        execute("warmup.cfg");
+
+        show_chat("MATCH_FINISHED");
+
+        period_stats_store(P_OVER_SECOND);
+
+        g_period = P_END;
         g_state = S_EPILOGUE;
+
+        set_task(0.1, "discord_post_result");
 
         return;
     }
 }
 
-stock first_stats_store()
+stock period_stats_store(period)
 {
-    g_first_scores[TEAM_A] = g_scores[TEAM_A];
-    g_first_scores[TEAM_B] = g_scores[TEAM_B];
+    g_period_scores[period][TEAM_A] = g_scores[TEAM_A];
+    g_period_scores[period][TEAM_B] = g_scores[TEAM_B];
+
+    // Subtract scores from previous periods.
+    for (new p = 0; p < period; p++)
+    {
+        g_period_scores[period][TEAM_A] -= g_period_scores[p][TEAM_A];
+        g_period_scores[period][TEAM_B] -= g_period_scores[p][TEAM_B];
+    }
 
     // Store each player's frags based on his/hers authid
     for (new i = 1; i <= MAX_PLAYERS; i++)
     {
         if (is_valid_player(i))
         {
-            first_stats_add(i);
+            period_stats_add(period, i);
         }
     }
 }
 
-stock first_stats_add(id)
+stock period_stats_add(period, id)
 {
-    if (g_first_next >= MAX_PLAYERS)
+    if (g_period_next[period] >= MAX_PLAYERS)
     {
         return;
     }
 
-    get_user_authid(id, g_first_authids[g_first_next], 63);
-    g_first_frags[g_first_next] = get_user_frags(id);
-    g_first_deaths[g_first_next] = get_user_deaths(id);
-    g_first_next++;
+    new index = g_period_next[period];
+
+    get_user_authid(id, g_period_authids[period][index], 63);
+    // NOTE: Server restarts nullify frags and deaths ....
+    g_period_frags[period][index] = get_user_frags(id);
+    g_period_deaths[period][index] = get_user_deaths(id);
+
+    g_period_next[period]++;
 }
 
-stock first_stats_frags(id)
+stock period_stats_frags(period, id)
 {
     new authid[64];
     get_user_authid(id, authid, charsmax(authid));
 
-    for (new i = 0; i < g_first_next; i++)
+    for (new i = 0; i < g_period_next[period]; i++)
     {
-        if (equali(authid, g_first_authids[i]))
+        if (equali(authid, g_period_authids[period][i]))
         {
-            return g_first_frags[i];
+            return g_period_frags[period][i];
         }
     }
 
     return 0;
 }
 
-stock first_stats_deaths(id)
+stock period_stats_deaths(period, id)
 {
     new authid[64];
     get_user_authid(id, authid, charsmax(authid));
 
-    for (new i = 0; i < g_first_next; i++)
+    for (new i = 0; i < g_period_next[period]; i++)
     {
-        if (equali(authid, g_first_authids[i]))
+        if (equali(authid, g_period_authids[period][i]))
         {
-            return g_first_deaths[i];
+            return g_period_deaths[period][i];
         }
     }
 
     return 0;
+}
+
+stock stats_frags(id)
+{
+    new frags = 0;
+    for (new i = 0; i < P_COUNT; i++)
+    {
+        frags += period_stats_frags(i, id);
+    }
+
+    return frags;
+}
+
+stock stats_deaths(id)
+{
+    new deaths = 0;
+    for (new i = 0; i < P_COUNT; i++)
+    {
+        deaths += period_stats_deaths(i, id);
+    }
+
+    return deaths;
 }
 
 public round_start_cb()
 {
-    if (g_half == H_FIRST && g_state == S_MAIN && (g_scores[TEAM_A] + g_scores[TEAM_B] == WIN_GOAL - 2))
+
+    if (g_period == P_FIRST && g_state == S_MAIN && (g_scores[TEAM_A] + g_scores[TEAM_B] == WIN_GOAL - 2))
     {
         show_chat("LAST_ROUND");
         play_sound(SOUND_WARNING);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_half == H_SECOND && g_state == S_MAIN && (g_scores[TEAM_A] == WIN_GOAL - 1 && g_scores[TEAM_B] == WIN_GOAL - 1))
+    if (g_period == P_OVER_FIRST && g_state == S_MAIN && (g_scores[TEAM_A] + g_scores[TEAM_B] == WIN_GOAL - 1 + WIN_GOAL - 1 + OVERTIME_GOAL - 2))
     {
-        // Both team on match point!
+        show_chat("LAST_ROUND");
+        play_sound(SOUND_WARNING);
+        return PLUGIN_CONTINUE;
+    }
+
+    if (g_period == P_OVER_SECOND && g_state == S_MAIN && (g_scores[TEAM_A] == WIN_GOAL - 1 + OVERTIME_GOAL - 1 && g_scores[TEAM_B] == WIN_GOAL - 1 + OVERTIME_GOAL - 1))
+    {
+        // Both team on overtime match point! What a game!!!
         show_chat("MATCH_POINT_YOUR");
         play_sound(SOUND_WARNING);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_half == H_SECOND && g_state == S_MAIN && g_scores[TEAM_A] == WIN_GOAL - 1)
+    if (g_period == P_SECOND && g_state == S_MAIN && g_scores[TEAM_A] == WIN_GOAL - 1)
     {
         show_match_point(TEAM_A);
         play_sound(SOUND_WARNING);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_half == H_SECOND && g_state == S_MAIN && g_scores[TEAM_B] == WIN_GOAL - 1)
+    if (g_period == P_SECOND && g_state == S_MAIN && g_scores[TEAM_B] == WIN_GOAL - 1)
+    {
+        show_match_point(TEAM_B);
+        play_sound(SOUND_WARNING);
+        return PLUGIN_CONTINUE;
+    }
+
+    if (g_period == P_OVER_SECOND && g_state == S_MAIN && g_scores[TEAM_A] == WIN_GOAL - 1 + OVERTIME_GOAL - 1)
+    {
+        show_match_point(TEAM_A);
+        play_sound(SOUND_WARNING);
+        return PLUGIN_CONTINUE;
+    }
+
+    if (g_period == P_OVER_SECOND && g_state == S_MAIN && g_scores[TEAM_B] == WIN_GOAL - 1 + OVERTIME_GOAL - 1)
     {
         show_match_point(TEAM_B);
         play_sound(SOUND_WARNING);
@@ -688,7 +844,7 @@ public timeout_b_cb()
 
 stock timeout(team)
 {
-    if (g_timeouts[team] >= 1)
+    if (g_timeouts[team] >= MAX_TIMEOUTS)
     {
         show_chat("NO_MORE_TIMEOUTS");
     }
@@ -863,23 +1019,64 @@ stock show_score()
 stock show_score_for_id(id)
 {
     new hud[256];
+    new period[16];
+
+    // Determine right value of the game state indicator.
+    if (g_period == P_END)
+    {
+        // Terminated.
+        format(period, charsmax(period), "");
+    }
+    else if (g_period == P_FIRST || g_period == P_SECOND)
+    {
+        new bo = WIN_GOAL + WIN_GOAL - 1;
+        if (g_state != S_MAIN)
+        {
+            // Warm up.
+            format(period, charsmax(period), "(Bo%d W%d)", bo, g_period + 1);
+        }
+        else
+        {
+            // Main.
+            format(period, charsmax(period), "(Bo%d N%d)", bo, g_period + 1);
+        }
+    }
+    else if (g_period == P_OVER_FIRST || g_period == P_OVER_SECOND)
+    {
+        new bo = WIN_GOAL + WIN_GOAL - 2 + OVERTIME_GOAL + OVERTIME_GOAL - 1;
+        if (g_state != S_MAIN)
+        {
+            // Overtime warm up.
+            format(period, charsmax(period), "(Bo%d W%dx)", bo, g_period - P_OVER_FIRST + 1);
+        }
+        else
+        {
+            // Overtime main.
+            format(period, charsmax(period), "(Bo%d N%dx)", bo, g_period - P_OVER_FIRST + 1);
+        }
+    }
+    else
+    {
+        // Unknown state should never occur!
+        format(period, charsmax(period), "(U)");
+    }
 
     new team = user_team(id);
     if (team == TEAM_UNKNOWN)
     {
-        format(hud, charsmax(hud), "%L", id, "SCORE", g_scores[g_teams[FORCE_T]], g_scores[g_teams[FORCE_CT]]);
+        format(hud, charsmax(hud), "%L", id, "SCORE", g_scores[g_teams[FORCE_T]], g_scores[g_teams[FORCE_CT]], period);
     }
     else if (g_scores[team] == g_scores[other_team(team)])
     {
-        format(hud, charsmax(hud), "%L", id, "SCORE_TIE", g_scores[team]);
+        format(hud, charsmax(hud), "%L", id, "SCORE_TIE", g_scores[team], period);
     }
     else if (g_scores[team] > g_scores[other_team(team)])
     {
-        format(hud, charsmax(hud), "%L", id, "SCORE_WIN", g_scores[team], g_scores[other_team(team)]);
+        format(hud, charsmax(hud), "%L", id, "SCORE_WIN", g_scores[team], g_scores[other_team(team)], period);
     }
     else
     {
-        format(hud, charsmax(hud), "%L", id, "SCORE_LOSS", g_scores[team], g_scores[other_team(team)]);
+        format(hud, charsmax(hud), "%L", id, "SCORE_LOSS", g_scores[team], g_scores[other_team(team)], period);
     }
 
     set_hudmessage(248, 180, 0, 0.005, 0.925, 0, 0.0, 3.5, 0.1, 0.2, 4);
@@ -1050,6 +1247,17 @@ stock enforce_model(id)
     }
 }
 
+stock set_money(amount)
+{
+    for (new i = 1; i <= MAX_PLAYERS; i++)
+    {
+        if (is_valid_player(i))
+        {
+            cs_set_user_money(i, amount, 1);
+        }
+    }
+}
+
 stock ERROR(msg[])
 {
     server_print("[E] %s", msg);
@@ -1074,8 +1282,8 @@ public player_compare(player1, player2, const array[], const data[], data_size)
         return -1;
     }
 
-    new frags1 = first_stats_frags(player1) + get_user_frags(player1);
-    new frags2 = first_stats_frags(player2) + get_user_frags(player2);
+    new frags1 = stats_frags(player1);
+    new frags2 = stats_frags(player2);
     if (frags1 > frags2)
     {
         return -1;
@@ -1086,8 +1294,8 @@ public player_compare(player1, player2, const array[], const data[], data_size)
     }
     else
     {
-        new deaths1 = first_stats_deaths(player1) + get_user_deaths(player1);
-        new deaths2 = first_stats_deaths(player2) + get_user_deaths(player2);
+        new deaths1 = stats_deaths(player1);
+        new deaths2 = stats_deaths(player2);
         if (deaths1 > deaths2)
         {
             return 1;
@@ -1154,7 +1362,7 @@ public discord_post_result()
                 // Get player's name and stats in the match
                 get_user_name(id, player, charsmax(player));
                 format(winners, charsmax(winners), "%s- %s (%d/%d)\\n", winners, player,
-                    first_stats_frags(id) + get_user_frags(id), first_stats_deaths(id) + get_user_deaths(id));
+                    stats_frags(id), stats_deaths(id));
                 continue;
             }
 
@@ -1163,20 +1371,37 @@ public discord_post_result()
                 // Get player's name and stats in the match
                 get_user_name(id, player, charsmax(player));
                 format(losers, charsmax(losers), "%s- %s (%d/%d)\\n", losers, player,
-                    first_stats_frags(id) + get_user_frags(id), first_stats_deaths(id) + get_user_deaths(id));
+                    stats_frags(id), stats_deaths(id));
                 continue;
             }
         }
     }
 
     // Payload
-    formatex(json, charsmax(json),
-        "{\"embeds\":[{\"title\":\"Tournament finished on %s with score %d:%d (%d:%d, %d:%d)!\",\"fields\":[{\"name\":\"Winners\",\"value\": \"%s\",\"inline\":true},{\"name\":\"Losers\",\"value\":\"%s\",\"inline\":true}]}]}",
-        map,
-        g_scores[winner], g_scores[loser],
-        g_first_scores[winner], g_first_scores[loser],
-        g_scores[winner] - g_first_scores[winner], g_scores[loser] - g_first_scores[loser],
-        winners, losers);
+    if (g_period_scores[P_OVER_FIRST][winner] + g_period_scores[P_OVER_SECOND][winner] == 0)
+    {
+        // No overtime.
+        formatex(json, charsmax(json),
+            "{\"embeds\":[{\"title\":\"Tournament finished on %s with score %d:%d (%d:%d, %d:%d)!\",\"fields\":[{\"name\":\"Winners\",\"value\": \"%s\",\"inline\":true},{\"name\":\"Losers\",\"value\":\"%s\",\"inline\":true}]}]}",
+            map,
+            g_scores[winner], g_scores[loser],
+            g_period_scores[P_FIRST][winner], g_period_scores[P_FIRST][loser],
+            g_period_scores[P_SECOND][winner], g_period_scores[P_SECOND][loser],
+            winners, losers);
+    }
+    else
+    {
+        // Game with overtime.
+        formatex(json, charsmax(json),
+            "{\"embeds\":[{\"title\":\"Tournament finished on %s with score %d:%dx (%d:%d, %d:%d, %d:%d, %d:%d)!\",\"fields\":[{\"name\":\"Winners\",\"value\": \"%s\",\"inline\":true},{\"name\":\"Losers\",\"value\":\"%s\",\"inline\":true}]}]}",
+            map,
+            g_scores[winner], g_scores[loser],
+            g_period_scores[P_FIRST][winner], g_period_scores[P_FIRST][loser],
+            g_period_scores[P_SECOND][winner], g_period_scores[P_SECOND][loser],
+            g_period_scores[P_OVER_FIRST][winner], g_period_scores[P_OVER_FIRST][loser],
+            g_period_scores[P_OVER_SECOND][winner], g_period_scores[P_OVER_SECOND][loser],
+            winners, losers);
+    }
 
     // HTTP Header
     formatex(header, charsmax(header),
