@@ -1,10 +1,10 @@
 /*
-                        _         _
-                       / \   _ __| | ___  ___ __ _ _   _
-                      / ^ \ (_) _` |/ _ \/ __/ _` | | | |
-                     / / \ \ | (_| |  __/ (_| (_| | |_| |
-                    /_/   \_(_)__,_|\___|\___\__,_|\__, |
-                                                   |___/
+     _         _
+    / \   _ __| | ___  ___ __ _ _   _
+   / ^ \ (_) _` |/ _ \/ __/ _` | | | |
+  / / \ \ | (_| |  __/ (_| (_| | |_| |
+ /_/   \_(_)__,_|\___|\___\__,_|\__, |
+                                |___/
 MIT License
 
 Copyright (c) 2021 MrL0ck, LambdaDecay.com
@@ -37,7 +37,7 @@ SOFTWARE.
 // During the Warm Up phase score is not counted. For each team, it is
 // possible to take timeouts within the Main phase. Server configuration
 // for each phase is loaded from ../config/ldtourney/*.cfg files. Final
-// score is then shared on Discord.
+// score can then be shared on a result server.
 //
 
 #pragma semicolon 1
@@ -52,76 +52,127 @@ SOFTWARE.
 #include <sockets>
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// Configure per your need
-#define WIN_GOAL            16
-#define OVERTIME_GOAL       4
-#define OVERTIME_MONEY      16000
-#define MAX_TIMEOUTS        1
-#define DISCORD_PROXY       "<YOUR_PROXY>"
-#define DISCORD_PROXY_PORT  80
-#define DISCORD_HOOK        "/api/webhooks/<WEBHOOK_ID>/<WEBHOOK_TOKEN>"
+// Cvars and their default values
+#define VIP_FLAG                        ADMIN_ADMIN
+
+#define CVAR_WIN_GOAL                   "ld_tourney_wingoal"
+#define CVAR_OVERTIME_GOAL              "ld_tourney_overtimegoal"
+#define CVAR_OVERTIME_MONEY             "ld_tourney_overtimemoney"
+#define CVAR_MAX_TIMEOUTS               "ld_tourney_maxtimeouts"
+#define CVAR_T_MODEL                    "ld_tourney_tmodel"
+#define CVAR_CT_MODEL                   "ld_tourney_ctmodel"
+#define CVAR_WARNING_SOUND              "ld_tourney_warningsound"
+#define CVAR_RESULT_SERVER              "ld_tourney_resultserver"
+#define CVAR_RESULT_SERVER_PORT         "ld_tourney_resultserverport"
+#define CVAR_RESULT_URI                 "ld_tourney_resulturi"
+#define CVAR_TOURNEY_NAME               "ld_tourney_tourneyname"
+#define CVAR_TOURNEY_KEY                "ld_tourney_tourneykey"
+
+#define DEFAULT_WIN_GOAL                "16"
+#define DEFAULT_OVERTIME_GOAL           "4"
+#define DEFAULT_OVERTIME_MONEY          "16000"
+#define DEFAULT_MAX_TIMEOUTS            "1"
+#define DEFAULT_T_MODEL                 "urban"
+#define DEFAULT_CT_MODEL                "leet"
+#define DEFAULT_WARNING_SOUND           "sound/lambdadecay/ringbell.wav"
+#define DEFAULT_RESULT_SERVER           ""
+#define DEFAULT_RESULT_SERVER_PORT      ""
+#define DEFAULT_RESULT_URI              ""
+#define DEFAULT_TOURNEY_NAME            ""
+#define DEFAULT_TOURNEY_KEY             ""
+
+#define INDEX_NUM_WIN_GOAL              0
+#define INDEX_NUM_OVERTIME_GOAL         1
+#define INDEX_NUM_OVERTIME_MONEY        2
+#define INDEX_NUM_MAX_TIMEOUTS          3
+#define INDEX_NUM_RESULT_SERVER_PORT    4
+#define INDEX_NUM_COUNT                 5
+
+#define CVAR_STRING_VALUE_MAX_LENGTH    64
+#define INDEX_STRING_T_MODEL            0
+#define INDEX_STRING_CT_MODEL           1
+#define INDEX_STRING_WARNING_SOUND      2
+#define INDEX_STRING_RESULT_SERVER      3
+#define INDEX_STRING_RESULT_URI         4
+#define INDEX_STRING_TOURNEY_NAME       5
+#define INDEX_STRING_TOURNEY_KEY        6
+#define INDEX_STRING_COUNT              7
 
 //////////////////////////////////////////////////////////////////////////////
 // Macros
-#define MAX_PLAYERS     32
-#define SOUND_WARNING   "sound/lambdadecay/ringbell.wav"
-// #define DPRINT(%1)      server_print(%1)
-#define DPRINT(%1)      do {} while (0)
+#define MAX_PLAYERS         32
+// #define DPRINT(%1)       server_print(%1)
+#define DPRINT(%1)          do {} while (0)
+
+//////////////////////////////////////////////////////////////////////////////
+// Tasks
+#define TASK_SHORT_ID       40
+#define TASK_MIDDLE_ID      41
+#define TASK_LONG_ID        42
+#define TASK_CANCEL_ID      43
 
 //////////////////////////////////////////////////////////////////////////////
 // Teams
-#define TEAM_A          0
-#define TEAM_B          1
-#define TEAM_COUNT      2
-#define TEAM_UNKNOWN    -1
+#define TEAM_A              0
+#define TEAM_B              1
+#define TEAM_COUNT          2
+#define TEAM_UNKNOWN        -1
 
 //////////////////////////////////////////////////////////////////////////////
 // Forces
-#define FORCE_UNKNOWN   0
-#define FORCE_T         1
-#define FORCE_CT        2
-#define FORCE_SPEC      3
-#define FORCE_COUNT     4 // ! UNKNOWN, T, CT, SPECTATOR
+#define FORCE_UNKNOWN       0
+#define FORCE_T             1
+#define FORCE_CT            2
+#define FORCE_SPEC          3
+#define FORCE_COUNT         4 // ! UNKNOWN, T, CT, SPECTATOR
 
 //////////////////////////////////////////////////////////////////////////////
 // Periods
-#define P_FIRST         0
-#define P_SECOND        1
-#define P_OVER_FIRST    2
-#define P_OVER_SECOND   3
+#define P_FIRST             0
+#define P_SECOND            1
+#define P_OVER_FIRST        2
+#define P_OVER_SECOND       3
+#define P_END               4
 
-#define P_END           4
-#define P_ANY           5
-#define P_COUNT         4
+#define P_ANY               5
+#define P_COUNT             4 // Do NOT include P_END to counted periods!
 
 //////////////////////////////////////////////////////////////////////////////
 // States
-#define S_PROLOGUE      0
-#define S_WARM_UP       1
-#define S_READY_A       2
-#define S_READY_B       3
-#define S_RESTART_1     4
-#define S_RESTART_2     5
-#define S_MAIN          7
-#define S_TIMEOUT_A     8
-#define S_TIMEOUT_B     9
-#define S_EPILOGUE      10
-#define S_EXIT_A        11
-#define S_EXIT_B        12
+#define S_PROLOGUE          0
+#define S_WARM_UP           1
+#define S_READY_A           2
+#define S_READY_B           3
+#define S_RESTART_1         4
+#define S_RESTART_2         5
+#define S_MAIN              6
+#define S_TIMEOUT_A         7
+#define S_TIMEOUT_B         8
+#define S_EPILOGUE          9
+#define S_EXIT_A            10
+#define S_EXIT_B            11
+#define S_TOURNEY_RESET_A   12
+#define S_TOURNEY_RESET_B   13
+#define S_PERIOD_RESET_A    14
+#define S_PERIOD_RESET_B    15
 
 //////////////////////////////////////////////////////////////////////////////
 // Events
-#define EV_RESET        0
-#define EV_START        1
-#define EV_READY_A      2
-#define EV_READY_B      3
-#define EV_UNREADY_A    4
-#define EV_UNREADY_B    5
-#define EV_TIMEOUT_A    6
-#define EV_TIMEOUT_B    7
-#define EV_WIN_A        8
-#define EV_WIN_B        9
-#define EV_ROUND_START  10
+#define EV_RESET            0
+#define EV_START            1
+#define EV_READY_A          2
+#define EV_READY_B          3
+#define EV_UNREADY_A        4
+#define EV_UNREADY_B        5
+#define EV_TIMEOUT_A        6
+#define EV_TIMEOUT_B        7
+#define EV_WIN_A            8
+#define EV_WIN_B            9
+#define EV_ROUND_START      10
+#define EV_TOURNEY_RESET_A  11
+#define EV_TOURNEY_RESET_B  12
+#define EV_PERIOD_RESET_A   13
+#define EV_PERIOD_RESET_B   14
 
 //////////////////////////////////////////////////////////////////////////////
 // Datatypes
@@ -141,6 +192,7 @@ new const NEXT_STATES[][next_state_t] =
 {
     { P_FIRST,  S_PROLOGUE,   EV_START,       "warm_up_cb"        },
 
+    { P_FIRST,  S_WARM_UP,    EV_ROUND_START, "load_cvars_cb"     },
     { P_ANY,    S_WARM_UP,    EV_READY_A,     "ready_a_cb"        },
     { P_ANY,    S_WARM_UP,    EV_READY_B,     "ready_b_cb"        },
     { P_ANY,    S_READY_A,    EV_READY_B,     "restart_cb"        },
@@ -152,19 +204,77 @@ new const NEXT_STATES[][next_state_t] =
     { P_SECOND, S_RESTART_2,  EV_ROUND_START, "main_cb"           },
     { P_OVER_FIRST,  S_RESTART_2, EV_ROUND_START, "overtime_main_cb" },
     { P_OVER_SECOND, S_RESTART_2, EV_ROUND_START, "overtime_main_cb" },
+
     { P_ANY,    S_MAIN,       EV_WIN_A,       "win_a_cb"          },
     { P_ANY,    S_MAIN,       EV_WIN_B,       "win_b_cb"          },
+    { P_ANY,    S_MAIN,       EV_ROUND_START, "round_start_cb"    },
+
     { P_ANY,    S_MAIN,       EV_TIMEOUT_A,   "timeout_a_cb"      },
     { P_ANY,    S_MAIN,       EV_TIMEOUT_B,   "timeout_b_cb"      },
-    { P_ANY,    S_MAIN,       EV_ROUND_START, "round_start_cb"    },
     { P_ANY,    S_TIMEOUT_A,  EV_READY_A,     "resume_cb"         },
     { P_ANY,    S_TIMEOUT_B,  EV_READY_B,     "resume_cb"         },
+
+    { P_ANY,    S_TIMEOUT_A,  EV_WIN_A,       "win_a_cb"          },
+    { P_ANY,    S_TIMEOUT_A,  EV_WIN_B,       "win_b_cb"          },
+    { P_ANY,    S_TIMEOUT_A,  EV_ROUND_START, "round_start_cb"    },
+    { P_ANY,    S_TIMEOUT_B,  EV_WIN_A,       "win_a_cb"          },
+    { P_ANY,    S_TIMEOUT_B,  EV_WIN_B,       "win_b_cb"          },
+    { P_ANY,    S_TIMEOUT_B,  EV_ROUND_START, "round_start_cb"    },
+
+    { P_ANY,    S_MAIN,             EV_TOURNEY_RESET_A, "tourney_reset_a_cb"    },
+    { P_ANY,    S_MAIN,             EV_TOURNEY_RESET_B, "tourney_reset_b_cb"    },
+    { P_ANY,    S_TOURNEY_RESET_A,  EV_TOURNEY_RESET_B, "tourney_reset_cb"      },
+    { P_ANY,    S_TOURNEY_RESET_A,  EV_READY_A,         "tourney_unreset_cb"    },
+    { P_ANY,    S_TOURNEY_RESET_B,  EV_TOURNEY_RESET_A, "tourney_reset_cb"      },
+    { P_ANY,    S_TOURNEY_RESET_B,  EV_READY_B,         "tourney_unreset_cb"    },
+
+    { P_ANY,    S_TOURNEY_RESET_A,  EV_WIN_A,           "win_a_cb"              },
+    { P_ANY,    S_TOURNEY_RESET_A,  EV_WIN_B,           "win_b_cb"              },
+    { P_ANY,    S_TOURNEY_RESET_A,  EV_ROUND_START,     "round_start_cb"        },
+    { P_ANY,    S_TOURNEY_RESET_B,  EV_WIN_A,           "win_a_cb"              },
+    { P_ANY,    S_TOURNEY_RESET_B,  EV_WIN_B,           "win_b_cb"              },
+    { P_ANY,    S_TOURNEY_RESET_B,  EV_ROUND_START,     "round_start_cb"        },
+
+    { P_ANY,    S_MAIN,             EV_PERIOD_RESET_A,  "period_reset_a_cb"     },
+    { P_ANY,    S_MAIN,             EV_PERIOD_RESET_B,  "period_reset_b_cb"     },
+    { P_ANY,    S_PERIOD_RESET_A,   EV_PERIOD_RESET_B,  "period_reset_cb"       },
+    { P_ANY,    S_PERIOD_RESET_A,   EV_READY_A,         "period_unreset_cb"     },
+    { P_ANY,    S_PERIOD_RESET_B,   EV_PERIOD_RESET_A,  "period_reset_cb"       },
+    { P_ANY,    S_PERIOD_RESET_B,   EV_READY_B,         "period_unreset_cb"     },
+
+    { P_ANY,    S_PERIOD_RESET_A,   EV_WIN_A,           "win_a_cb"              },
+    { P_ANY,    S_PERIOD_RESET_A,   EV_WIN_B,           "win_b_cb"              },
+    { P_ANY,    S_PERIOD_RESET_A,   EV_ROUND_START,     "round_start_cb"        },
+    { P_ANY,    S_PERIOD_RESET_B,   EV_WIN_A,           "win_a_cb"              },
+    { P_ANY,    S_PERIOD_RESET_B,   EV_WIN_B,           "win_b_cb"              },
+    { P_ANY,    S_PERIOD_RESET_B,   EV_ROUND_START,     "round_start_cb"        },
 
     { P_END,    S_EPILOGUE,   EV_READY_A,     "exit_a_cb"         },
     { P_END,    S_EPILOGUE,   EV_READY_B,     "exit_b_cb"         },
     { P_END,    S_EXIT_A,     EV_READY_B,     "next_map_cb"       },
     { P_END,    S_EXIT_B,     EV_READY_A,     "next_map_cb"       }
 };
+new const MAIN_SUBSTATES[] =
+{
+    S_MAIN,
+    S_TOURNEY_RESET_A, S_TOURNEY_RESET_B,
+    S_PERIOD_RESET_A, S_PERIOD_RESET_B,
+    S_TIMEOUT_A, S_TIMEOUT_B
+};
+
+//////////////////////////////////////////////////////////////////////////////
+// Cvar settings
+#define REGISTER_CVAR_STRING(%1)    g_cvar_ptrs[INDEX_NUM_COUNT+INDEX_STRING_%1] = register_cvar(CVAR_%1,DEFAULT_%1)
+#define LOAD_CVAR_STRING(%1)        get_pcvar_string(g_cvar_ptrs[INDEX_NUM_COUNT+INDEX_STRING_%1],g_cvar_string_values[INDEX_STRING_%1],CVAR_STRING_VALUE_MAX_LENGTH-1)
+#define GET_CVAR_STRING(%1,%2,%3)   copy(%2,%3,g_cvar_string_values[INDEX_STRING_%1])
+
+#define REGISTER_CVAR_NUM(%1)       g_cvar_ptrs[INDEX_NUM_%1] = register_cvar(CVAR_%1,DEFAULT_%1)
+#define LOAD_CVAR_NUM(%1)           g_cvar_num_values[INDEX_NUM_%1] = get_pcvar_num(g_cvar_ptrs[INDEX_NUM_%1])
+#define GET_CVAR_NUM(%1)            g_cvar_num_values[INDEX_NUM_%1]
+
+new g_cvar_ptrs[INDEX_NUM_COUNT+INDEX_STRING_COUNT];
+new g_cvar_num_values[INDEX_NUM_COUNT];
+new g_cvar_string_values[INDEX_STRING_COUNT][CVAR_STRING_VALUE_MAX_LENGTH];
 
 //////////////////////////////////////////////////////////////////////////////
 // Global State
@@ -182,41 +292,102 @@ new g_period_authids[P_COUNT][MAX_PLAYERS][64];
 new g_period_frags[P_COUNT][MAX_PLAYERS];
 new g_period_deaths[P_COUNT][MAX_PLAYERS];
 
-// Discord connection related socket
+// Result server connection-related socket
 new g_socket = 0;
 
 //////////////////////////////////////////////////////////////////////////////
 // Plugin Commons
 public plugin_init()
 {
-    register_plugin("Lambda Decay Tourney", "1.0.3", "MrL0ck");
+    // Translations.
     register_dictionary("ldtourney.txt");
 
-    // Event hooks
+    // Event hooks.
     register_event("HLTV", "ev_round_start", "a", "1=0", "2=0");
     register_event("ResetHUD", "ev_reset_hud", "b");
     register_event("SendAudio", "ev_win_t", "a", "2&%!MRAD_terwin");
+    // Target bombed!
+    // register_event("23", "ev_win_t", "a", "1=17", "6=-105", "7=17");
     register_event("SendAudio", "ev_win_ct", "a", "2&%!MRAD_ctwin");
+    // register_event("SendAudio", "ev_win_ct", "a", "2&%!MRAD_BOMBDEF");
+    // register_event("TextMsg","ev_win_ct", "a", "2&#All_Hostages_R");
     register_clcmd("say ready", "ev_ready");
     register_clcmd("say unready", "ev_unready");
     register_clcmd("say timeout", "ev_timeout");
+    register_clcmd("say reset", "ev_tourney_reset");
+    register_clcmd("say restart", "ev_period_reset");
 
-    // Config directory
+    // These events are for admins only.
+    register_clcmd("say /result", "ev_post_result");
+
+    // Config directory.
     get_configsdir(g_config_dir, charsmax(g_config_dir));
 
-    set_task(0.1, "reset_cb");
-    set_task(10.0, "long_task", 44, "", 0, "b");
-    set_task(5.0, "mid_task", 43, "", 0, "b");
-    set_task(4.0, "short_task", 42, "", 0, "b");
+    // Timers.
+    set_task(0.1,   "reset_cb");
+    set_task(10.0,  "long_task",    TASK_LONG_ID,   "", 0, "b");
+    set_task(5.0,   "middle_task",  TASK_MIDDLE_ID, "", 0, "b");
+    set_task(4.0,   "short_task",   TASK_SHORT_ID,  "", 0, "b");
 
     return PLUGIN_CONTINUE;
 }
 
 public plugin_precache()
 {
-    precache_sound(SOUND_WARNING);
+    new path[256];
+    new model[64];
+
+    // Register plugin before CVAR registration.
+    register_plugin("Lambda Decay Tourney", "1.1.0", "MrL0ck");
+
+    // This must be done early, since it is utilized by commands below.
+    register_cvars();
+    load_cvars();
+
+    GET_CVAR_STRING(WARNING_SOUND, path, charsmax(path));
+    precache_sound(path);
+
+    GET_CVAR_STRING(T_MODEL, model, charsmax(model));
+    formatex(path, charsmax(path), "models/player/%s/%s.mdl", model, model);
+    precache_model(path);
+
+    GET_CVAR_STRING(CT_MODEL, model, charsmax(model));
+    formatex(path, charsmax(path), "models/player/%s/%s.mdl", model, model);
+    precache_model(path);
 
     return PLUGIN_CONTINUE;
+}
+
+stock register_cvars()
+{
+    REGISTER_CVAR_NUM(WIN_GOAL);
+    REGISTER_CVAR_NUM(OVERTIME_GOAL);
+    REGISTER_CVAR_NUM(OVERTIME_MONEY);
+    REGISTER_CVAR_NUM(MAX_TIMEOUTS);
+    REGISTER_CVAR_STRING(T_MODEL);
+    REGISTER_CVAR_STRING(CT_MODEL);
+    REGISTER_CVAR_STRING(WARNING_SOUND);
+    REGISTER_CVAR_STRING(RESULT_SERVER);
+    REGISTER_CVAR_NUM(RESULT_SERVER_PORT);
+    REGISTER_CVAR_STRING(RESULT_URI);
+    REGISTER_CVAR_STRING(TOURNEY_NAME);
+    REGISTER_CVAR_STRING(TOURNEY_KEY);
+}
+
+stock load_cvars()
+{
+    LOAD_CVAR_NUM(WIN_GOAL);
+    LOAD_CVAR_NUM(OVERTIME_GOAL);
+    LOAD_CVAR_NUM(OVERTIME_MONEY);
+    LOAD_CVAR_NUM(MAX_TIMEOUTS);
+    LOAD_CVAR_STRING(T_MODEL);
+    LOAD_CVAR_STRING(CT_MODEL);
+    LOAD_CVAR_STRING(WARNING_SOUND);
+    LOAD_CVAR_STRING(RESULT_SERVER);
+    LOAD_CVAR_NUM(RESULT_SERVER_PORT);
+    LOAD_CVAR_STRING(RESULT_URI);
+    LOAD_CVAR_STRING(TOURNEY_NAME);
+    LOAD_CVAR_STRING(TOURNEY_KEY);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -228,7 +399,7 @@ public short_task()
     return PLUGIN_CONTINUE;
 }
 
-public mid_task()
+public middle_task()
 {
     check_player_count();
     show_hint();
@@ -339,6 +510,26 @@ stock show_hint_for_id(id)
             if (team == TEAM_B) show_hud_for_id(id, "TIMEOUT_YOUR_HINT");
             else show_hud_for_id(id, "TIMEOUT_OTHER_HINT");
         }
+        case S_TOURNEY_RESET_A:
+        {
+            if (team == TEAM_A) show_hud_for_id(id, "TOURNEY_RESET_YOUR_HINT");
+            else show_hud_for_id(id, "TOURNEY_RESET_OTHER_HINT");
+        }
+        case S_TOURNEY_RESET_B:
+        {
+            if (team == TEAM_B) show_hud_for_id(id, "TOURNEY_RESET_YOUR_HINT");
+            else show_hud_for_id(id, "TOURNEY_RESET_OTHER_HINT");
+        }
+        case S_PERIOD_RESET_A:
+        {
+            if (team == TEAM_A) show_hud_for_id(id, "PERIOD_RESET_YOUR_HINT");
+            else show_hud_for_id(id, "PERIOD_RESET_OTHER_HINT");
+        }
+        case S_PERIOD_RESET_B:
+        {
+            if (team == TEAM_B) show_hud_for_id(id, "PERIOD_RESET_YOUR_HINT");
+            else show_hud_for_id(id, "PERIOD_RESET_OTHER_HINT");
+        }
         case S_EPILOGUE:
         {
             show_hud_for_id(id, "EPILOGUE_HINT");
@@ -404,6 +595,8 @@ public reset_cb()
 {
     execute("warmup.cfg");
 
+    load_cvars();
+
     g_state = S_PROLOGUE;
     g_period = P_FIRST;
 
@@ -435,6 +628,13 @@ public warm_up_cb()
     g_state = S_WARM_UP;
 
     execute("warmup.cfg");
+
+    return PLUGIN_CONTINUE;
+}
+
+public load_cvars_cb()
+{
+    load_cvars();
 
     return PLUGIN_CONTINUE;
 }
@@ -518,8 +718,8 @@ public overtime_main_cb()
 
     g_state = S_MAIN;
 
-    // In the overtime period, give everyone $16k!
-    set_money(OVERTIME_MONEY);
+    // In the overtime period, give everyone some extra overtime money!!!
+    set_money(GET_CVAR_NUM(OVERTIME_MONEY));
 
     return PLUGIN_CONTINUE;
 }
@@ -540,9 +740,12 @@ public win_b_cb()
 
 stock win(team)
 {
+    new win_goal = GET_CVAR_NUM(WIN_GOAL);
+    new overtime_goal = GET_CVAR_NUM(OVERTIME_GOAL);
+
     g_scores[team]++;
 
-    if (g_period == P_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] >= WIN_GOAL - 1))
+    if (g_period == P_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] >= win_goal - 1))
     {
         execute("warmup.cfg");
 
@@ -565,7 +768,7 @@ stock win(team)
         return;
     }
 
-    if (g_period == P_OVER_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] >= WIN_GOAL - 1 + WIN_GOAL - 1 + OVERTIME_GOAL - 1))
+    if (g_period == P_OVER_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] >= win_goal - 1 + win_goal - 1 + overtime_goal - 1))
     {
         execute("warmup.cfg");
 
@@ -588,8 +791,7 @@ stock win(team)
         return;
     }
 
-
-    if (g_period == P_SECOND && (g_scores[TEAM_A] == WIN_GOAL - 1 && g_scores[TEAM_B] == WIN_GOAL - 1))
+    if (g_period == P_SECOND && (g_scores[TEAM_A] == win_goal - 1 && g_scores[TEAM_B] == win_goal - 1))
     {
         execute("warmup.cfg");
 
@@ -619,8 +821,7 @@ stock win(team)
         return;
     }
 
-
-    if (g_period == P_SECOND && (g_scores[TEAM_A] >= WIN_GOAL || g_scores[TEAM_B] >= WIN_GOAL))
+    if (g_period == P_SECOND && (g_scores[TEAM_A] >= win_goal || g_scores[TEAM_B] >= win_goal))
     {
         execute("warmup.cfg");
 
@@ -631,12 +832,12 @@ stock win(team)
         g_period = P_END;
         g_state = S_EPILOGUE;
 
-        set_task(0.1, "discord_post_result");
+        set_task(0.1, "post_result");
 
         return;
     }
 
-    if (g_period == P_OVER_SECOND && (g_scores[TEAM_A] >= WIN_GOAL - 1 + OVERTIME_GOAL || g_scores[TEAM_B] >= WIN_GOAL - 1 + OVERTIME_GOAL))
+    if (g_period == P_OVER_SECOND && (g_scores[TEAM_A] >= win_goal - 1 + overtime_goal || g_scores[TEAM_B] >= win_goal - 1 + overtime_goal))
     {
         execute("warmup.cfg");
 
@@ -647,7 +848,7 @@ stock win(team)
         g_period = P_END;
         g_state = S_EPILOGUE;
 
-        set_task(0.1, "discord_post_result");
+        set_task(0.1, "post_result");
 
         return;
     }
@@ -746,56 +947,83 @@ stock stats_deaths(id)
     return deaths;
 }
 
+stock is_substate_of_main(s)
+{
+    for (new i = 0; i < sizeof(MAIN_SUBSTATES); i++)
+    {
+        if (s == MAIN_SUBSTATES[i])
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 public round_start_cb()
 {
+    // Matchpoints and last round are only shown in main phase. Check for it first.
+    if (!is_substate_of_main(g_state))
+        return PLUGIN_CONTINUE;
 
-    if (g_period == P_FIRST && g_state == S_MAIN && (g_scores[TEAM_A] + g_scores[TEAM_B] == WIN_GOAL - 2))
+    new win_goal = GET_CVAR_NUM(WIN_GOAL);
+    new overtime_goal = GET_CVAR_NUM(OVERTIME_GOAL);
+    new warning_sound[64];
+
+    if (g_period == P_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] == win_goal - 2))
     {
         show_chat("LAST_ROUND");
-        play_sound(SOUND_WARNING);
+        GET_CVAR_STRING(WARNING_SOUND, warning_sound, charsmax(warning_sound));
+        play_sound(warning_sound);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_period == P_OVER_FIRST && g_state == S_MAIN && (g_scores[TEAM_A] + g_scores[TEAM_B] == WIN_GOAL - 1 + WIN_GOAL - 1 + OVERTIME_GOAL - 2))
+    if (g_period == P_OVER_FIRST && (g_scores[TEAM_A] + g_scores[TEAM_B] == win_goal - 1 + win_goal - 1 + overtime_goal - 2))
     {
         show_chat("LAST_ROUND");
-        play_sound(SOUND_WARNING);
+        GET_CVAR_STRING(WARNING_SOUND, warning_sound, charsmax(warning_sound));
+        play_sound(warning_sound);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_period == P_OVER_SECOND && g_state == S_MAIN && (g_scores[TEAM_A] == WIN_GOAL - 1 + OVERTIME_GOAL - 1 && g_scores[TEAM_B] == WIN_GOAL - 1 + OVERTIME_GOAL - 1))
+    if (g_period == P_OVER_SECOND && (g_scores[TEAM_A] == win_goal - 1 + overtime_goal - 1 && g_scores[TEAM_B] == win_goal - 1 + overtime_goal - 1))
     {
         // Both team on overtime match point! What a game!!!
         show_chat("MATCH_POINT_YOUR");
-        play_sound(SOUND_WARNING);
+        GET_CVAR_STRING(WARNING_SOUND, warning_sound, charsmax(warning_sound));
+        play_sound(warning_sound);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_period == P_SECOND && g_state == S_MAIN && g_scores[TEAM_A] == WIN_GOAL - 1)
+    if (g_period == P_SECOND && g_scores[TEAM_A] == win_goal - 1)
     {
         show_match_point(TEAM_A);
-        play_sound(SOUND_WARNING);
+        GET_CVAR_STRING(WARNING_SOUND, warning_sound, charsmax(warning_sound));
+        play_sound(warning_sound);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_period == P_SECOND && g_state == S_MAIN && g_scores[TEAM_B] == WIN_GOAL - 1)
+    if (g_period == P_SECOND && g_scores[TEAM_B] == win_goal - 1)
     {
         show_match_point(TEAM_B);
-        play_sound(SOUND_WARNING);
+        GET_CVAR_STRING(WARNING_SOUND, warning_sound, charsmax(warning_sound));
+        play_sound(warning_sound);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_period == P_OVER_SECOND && g_state == S_MAIN && g_scores[TEAM_A] == WIN_GOAL - 1 + OVERTIME_GOAL - 1)
+    if (g_period == P_OVER_SECOND && g_scores[TEAM_A] == win_goal - 1 + overtime_goal - 1)
     {
         show_match_point(TEAM_A);
-        play_sound(SOUND_WARNING);
+        GET_CVAR_STRING(WARNING_SOUND, warning_sound, charsmax(warning_sound));
+        play_sound(warning_sound);
         return PLUGIN_CONTINUE;
     }
 
-    if (g_period == P_OVER_SECOND && g_state == S_MAIN && g_scores[TEAM_B] == WIN_GOAL - 1 + OVERTIME_GOAL - 1)
+    if (g_period == P_OVER_SECOND && g_scores[TEAM_B] == win_goal - 1 + overtime_goal - 1)
     {
         show_match_point(TEAM_B);
-        play_sound(SOUND_WARNING);
+        GET_CVAR_STRING(WARNING_SOUND, warning_sound, charsmax(warning_sound));
+        play_sound(warning_sound);
         return PLUGIN_CONTINUE;
     }
 
@@ -844,7 +1072,7 @@ public timeout_b_cb()
 
 stock timeout(team)
 {
-    if (g_timeouts[team] >= MAX_TIMEOUTS)
+    if (g_timeouts[team] >= GET_CVAR_NUM(MAX_TIMEOUTS))
     {
         show_chat("NO_MORE_TIMEOUTS");
     }
@@ -873,6 +1101,126 @@ public resume_cb()
 
     // Run antiflood once again ...
     server_cmd("amxx unpause antiflood");
+
+    return PLUGIN_CONTINUE;
+}
+
+public tourney_reset_a_cb()
+{
+    tourney_reset(TEAM_A);
+
+    return PLUGIN_CONTINUE;
+}
+
+public tourney_reset_b_cb()
+{
+    tourney_reset(TEAM_B);
+
+    return PLUGIN_CONTINUE;
+}
+
+stock tourney_reset(team)
+{
+    // Remove auto-cancelation task. (Just for sure.)
+    remove_task(TASK_CANCEL_ID);
+
+    // Set up auto-cancelation of reset request.
+    new params[3];
+    params[0] = team;
+    params[1] = EV_READY_A;
+    params[2] = EV_READY_B;
+    set_task(20.0, "ev_for_team", TASK_CANCEL_ID, params, sizeof(params));
+
+    // Change state.
+    g_state = (team == TEAM_A) ? S_TOURNEY_RESET_A : S_TOURNEY_RESET_B;
+}
+
+public tourney_reset_cb()
+{
+    // Remove auto-cancelation task.
+    remove_task(TASK_CANCEL_ID);
+
+    schedule_restart(5);
+
+    show_chat("TOURNEY_RESET");
+
+    next_state(EV_RESET);
+
+    return PLUGIN_CONTINUE;
+}
+
+public tourney_unreset_cb()
+{
+    // Remove auto-cancelation task.
+    remove_task(TASK_CANCEL_ID);
+
+    g_state = S_MAIN;
+
+    return PLUGIN_CONTINUE;
+}
+
+public period_reset_a_cb()
+{
+    period_reset(TEAM_A);
+
+    return PLUGIN_CONTINUE;
+}
+
+public period_reset_b_cb()
+{
+    period_reset(TEAM_B);
+
+    return PLUGIN_CONTINUE;
+}
+
+stock period_reset(team)
+{
+    // Remove auto-cancelation task. (Just for sure.)
+    remove_task(TASK_CANCEL_ID);
+
+    // Set up auto-cancelation of reset request.
+    new params[3];
+    params[0] = team;
+    params[1] = EV_READY_A;
+    params[2] = EV_READY_B;
+    set_task(20.0, "ev_for_team", TASK_CANCEL_ID, params, sizeof(params));
+
+    g_state = (team == TEAM_A) ? S_PERIOD_RESET_A : S_PERIOD_RESET_B;
+}
+
+public period_reset_cb()
+{ 
+    // Remove auto-cancelation task.
+    remove_task(TASK_CANCEL_ID);
+
+    // Revert team scores to the values before this period started.
+    g_scores[TEAM_A] = 0;
+    g_scores[TEAM_B] = 0;
+
+    // Add scores from previous periods.
+    for (new p = 0; p < g_period; p++)
+    {
+        g_scores[TEAM_A] += g_period_scores[p][TEAM_A];
+        g_scores[TEAM_B] += g_period_scores[p][TEAM_B];
+    }
+
+    g_state = S_WARM_UP;
+
+    execute("warmup.cfg");
+
+    show_chat("PERIOD_RESET");
+
+    schedule_restart(5);
+
+    return PLUGIN_CONTINUE;
+}
+
+public period_unreset_cb()
+{
+    // Remove auto-cancelation task.
+    remove_task(TASK_CANCEL_ID);
+
+    g_state = S_MAIN;
 
     return PLUGIN_CONTINUE;
 }
@@ -943,26 +1291,66 @@ public ev_timeout(id)
 stock ev_for_id(id, ev_team_a, ev_team_b)
 {
     new team = user_team(id);
+
+    new params[3];
+    params[0] = team;
+    params[1] = ev_team_a;
+    params[2] = ev_team_b;
+    ev_for_team(params);
+}
+
+public ev_for_team(const params[3])
+{
+    new team = params[0];
+    new ev_team_a = params[1];
+    new ev_team_b = params[2];
+
     if (team == TEAM_UNKNOWN)
     {
-        return;
+        return PLUGIN_CONTINUE;
     }
 
     if (team == TEAM_A)
     {
         next_state(ev_team_a);
-        return;
+        return PLUGIN_CONTINUE;
     }
     else if (team == TEAM_B)
     {
         next_state(ev_team_b);
-        return;
+        return PLUGIN_CONTINUE;
     }
+
+    return PLUGIN_CONTINUE;
 }
 
 public ev_reset_hud(id, level, cid)
 {
     enforce_model(id);
+
+    return PLUGIN_CONTINUE;
+}
+
+public ev_tourney_reset(id)
+{
+    ev_for_id(id, EV_TOURNEY_RESET_A, EV_TOURNEY_RESET_B);
+
+    return PLUGIN_CONTINUE;
+}
+
+public ev_period_reset(id)
+{
+    ev_for_id(id, EV_PERIOD_RESET_A, EV_PERIOD_RESET_B);
+
+    return PLUGIN_CONTINUE;
+}
+
+public ev_post_result(id)
+{
+    if (!(get_user_flags(id) & VIP_FLAG))
+        return PLUGIN_CONTINUE;
+
+    set_task(0.1, "post_result");
 
     return PLUGIN_CONTINUE;
 }
@@ -1021,6 +1409,9 @@ stock show_score_for_id(id)
     new hud[256];
     new period[16];
 
+    new win_goal = GET_CVAR_NUM(WIN_GOAL);
+    new overtime_goal = GET_CVAR_NUM(OVERTIME_GOAL);
+
     // Determine right value of the game state indicator.
     if (g_period == P_END)
     {
@@ -1029,8 +1420,8 @@ stock show_score_for_id(id)
     }
     else if (g_period == P_FIRST || g_period == P_SECOND)
     {
-        new bo = WIN_GOAL + WIN_GOAL - 1;
-        if (g_state != S_MAIN)
+        new bo = win_goal + win_goal - 1;
+        if (!is_substate_of_main(g_state))
         {
             // Warm up.
             format(period, charsmax(period), "(Bo%d W%d)", bo, g_period + 1);
@@ -1043,8 +1434,8 @@ stock show_score_for_id(id)
     }
     else if (g_period == P_OVER_FIRST || g_period == P_OVER_SECOND)
     {
-        new bo = WIN_GOAL + WIN_GOAL - 2 + OVERTIME_GOAL + OVERTIME_GOAL - 1;
-        if (g_state != S_MAIN)
+        new bo = win_goal + win_goal - 2 + overtime_goal + overtime_goal - 1;
+        if (!is_substate_of_main(g_state))
         {
             // Overtime warm up.
             format(period, charsmax(period), "(Bo%d W%dx)", bo, g_period - P_OVER_FIRST + 1);
@@ -1228,6 +1619,8 @@ stock play_sound(file[])
 
 stock enforce_model(id)
 {
+    new model[64];
+
     new force = user_force(id);
     if (force == FORCE_UNKNOWN)
     {
@@ -1236,13 +1629,15 @@ stock enforce_model(id)
 
     if (force == FORCE_T)
     {
-        cs_set_user_model(id, "arctic");
+        GET_CVAR_STRING(T_MODEL, model, charsmax(model));
+        cs_set_user_model(id, model);
         return;
     }
 
     if (force == FORCE_CT)
     {
-        cs_set_user_model(id, "urban");
+        GET_CVAR_STRING(CT_MODEL, model, charsmax(model));
+        cs_set_user_model(id, model);
         return;
     }
 }
@@ -1314,22 +1709,45 @@ public player_compare(player1, player2, const array[], const data[], data_size)
 }
 
 //////////////////////////////////////////////////////////////////////////////
-// Discord Webhook
-public discord_post_result()
+// Result server communication
+public post_result()
 {
     new map[32];
-    new winners[320];
-    new losers[320];
+    new winners[2176];
+    new losers[2176];
     new player[20];
+    new authid[64];
     new winner;
     new loser;
+    new first_winner;
+    new first_loser;
     new players[MAX_PLAYERS];
 
+    new server[64];
+    new port;
+    new uri[64];
+    new tourney_name[64];
+    new tourney_key[64];
+
     new error;
-    new json[768];
+    new json[2560];
     new header[256];
 
-    // Determine winners and losers
+    GET_CVAR_STRING(RESULT_SERVER, server, charsmax(server));
+    GET_CVAR_STRING(RESULT_URI, uri, charsmax(uri));
+    port = GET_CVAR_NUM(RESULT_SERVER_PORT);
+
+    // Firstly, check whether it even makes sense to post results.
+    if (strlen(server) <= 0)
+        return PLUGIN_CONTINUE;
+
+    if (strlen(uri) <= 0)
+        return PLUGIN_CONTINUE;
+
+    if (port <= 0)
+        return PLUGIN_CONTINUE;
+
+    // Determine winners and losers.
     if (g_scores[TEAM_A] > g_scores[TEAM_B])
     {
         winner = TEAM_A;
@@ -1341,72 +1759,108 @@ public discord_post_result()
         loser = TEAM_A;
     }
 
-    // Map name
+    // Map name.
     get_mapname(map, charsmax(map));
 
-    // Sort players according to their score
+    // Sort players according to their score.
     for (new i = 0; i < MAX_PLAYERS; i++)
     {
         players[i] = i + 1;
     }
     SortCustom1D(players, MAX_PLAYERS, "player_compare");
 
-    // Players for each team
+    // Players for each team.
+    first_winner = 1;
+    first_loser = 1;
     for (new i = 0; i < MAX_PLAYERS; i++)
     {
         new id = players[i];
         if (is_valid_player(id))
         {
+            // Each player is of length 134 (i.e., max total length is 134 * 16 = 2144).
             if (user_team(id) == winner)
             {
-                // Get player's name and stats in the match
+                // Deal with JSON comma.
+                if (first_winner)
+                {
+                    first_winner = 0;
+                }
+                else
+                {
+                    format(winners, charsmax(winners), "%s,", winners);
+                }
+
+                // Get player's name, authid, and stats in the match.
                 get_user_name(id, player, charsmax(player));
-                format(winners, charsmax(winners), "%s- %s (%d/%d)\\n", winners, player,
-                    stats_frags(id), stats_deaths(id));
+                get_user_authid(id, authid, charsmax(authid));
+                format(winners, charsmax(winners), "%s{\"pid\":\"%s\",\"nickname\":\"%s\",\"frags\":%d,\"deaths\":%d}",
+                    winners, authid, player, stats_frags(id), stats_deaths(id));
                 continue;
             }
 
             if (user_team(id) == loser)
             {
-                // Get player's name and stats in the match
+                // Deal with JSON comma.
+                if (first_loser)
+                {
+                    first_loser = 0;
+                }
+                else
+                {
+                    format(losers, charsmax(losers), "%s,", losers);
+                }
+
+                // Get player's name, authid, and stats in the match.
                 get_user_name(id, player, charsmax(player));
-                format(losers, charsmax(losers), "%s- %s (%d/%d)\\n", losers, player,
-                    stats_frags(id), stats_deaths(id));
+                get_user_authid(id, authid, charsmax(authid));
+                format(losers, charsmax(losers), "%s{\"pid\":\"%s\",\"nickname\":\"%s\",\"frags\":%d,\"deaths\":%d}",
+                    losers, authid, player, stats_frags(id), stats_deaths(id));
                 continue;
             }
         }
     }
 
-    // Payload
+    // Payload. Max length is given by a static part (map, score) 288 + a dynamic part (winners, losers) 2144 which is 2432 in total.
     if (g_period_scores[P_OVER_FIRST][winner] + g_period_scores[P_OVER_SECOND][winner] == 0)
     {
         // No overtime.
         formatex(json, charsmax(json),
-            "{\"embeds\":[{\"title\":\"Tournament finished on %s with score %d:%d (%d:%d, %d:%d)!\",\"fields\":[{\"name\":\"Winners\",\"value\": \"%s\",\"inline\":true},{\"name\":\"Losers\",\"value\":\"%s\",\"inline\":true}]}]}",
+            "{\"map\":\"%s\",\"score\":{\"winner\":{\"first\":%d,\"second\":%d,\"otFirst\":0,\"otSecond\":0},\"loser\":{\"first\":%d,\"second\":%d,\"otFirst\":0,\"otSecond\":0}},\"winners\":{\"items\":[%s]},\"losers\":{\"items\":[%s]}}",
             map,
-            g_scores[winner], g_scores[loser],
-            g_period_scores[P_FIRST][winner], g_period_scores[P_FIRST][loser],
-            g_period_scores[P_SECOND][winner], g_period_scores[P_SECOND][loser],
+            g_period_scores[P_FIRST][winner], g_period_scores[P_SECOND][winner],
+            g_period_scores[P_FIRST][loser], g_period_scores[P_SECOND][loser],
             winners, losers);
     }
     else
     {
         // Game with overtime.
         formatex(json, charsmax(json),
-            "{\"embeds\":[{\"title\":\"Tournament finished on %s with score %d:%dx (%d:%d, %d:%d, %d:%d, %d:%d)!\",\"fields\":[{\"name\":\"Winners\",\"value\": \"%s\",\"inline\":true},{\"name\":\"Losers\",\"value\":\"%s\",\"inline\":true}]}]}",
+            "{\"map\":\"%s\",\"score\":{\"winner\":{\"first\":%d,\"second\":%d,\"otFirst\":%d,\"otSecond\":%d},\"loser\":{\"first\":%d,\"second\":%d,\"otFirst\":%d,\"otSecond\":%d}},\"winners\":{\"items\":[%s]},\"losers\":{\"items\":[%s]}}",
             map,
-            g_scores[winner], g_scores[loser],
-            g_period_scores[P_FIRST][winner], g_period_scores[P_FIRST][loser],
-            g_period_scores[P_SECOND][winner], g_period_scores[P_SECOND][loser],
-            g_period_scores[P_OVER_FIRST][winner], g_period_scores[P_OVER_FIRST][loser],
-            g_period_scores[P_OVER_SECOND][winner], g_period_scores[P_OVER_SECOND][loser],
+            g_period_scores[P_FIRST][winner], g_period_scores[P_SECOND][winner],
+            g_period_scores[P_OVER_FIRST][winner], g_period_scores[P_OVER_SECOND][winner],
+            g_period_scores[P_FIRST][loser], g_period_scores[P_SECOND][loser],
+            g_period_scores[P_OVER_FIRST][loser], g_period_scores[P_OVER_SECOND][loser],
             winners, losers);
     }
 
-    // HTTP Header
-    formatex(header, charsmax(header),
-        "POST %s HTTP/1.0\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n",
-        DISCORD_HOOK, DISCORD_PROXY, strlen(json));
+    // HTTP Header.
+    GET_CVAR_STRING(TOURNEY_NAME, tourney_name, charsmax(tourney_name));
+    GET_CVAR_STRING(TOURNEY_KEY, tourney_key, charsmax(tourney_key));
+    if (strlen(tourney_name) > 0 && strlen(tourney_key) > 0)
+    {
+        // Send results with Authorization header.
+        formatex(header, charsmax(header),
+            "POST %s HTTP/1.0\r\nHost: %s\r\nContent-Type: application/json\r\nAuthorization: Basic %s:%s\r\nContent-Length: %d\r\n\r\n",
+            uri, server, tourney_name, tourney_key, strlen(json));
+    }
+    else
+    {
+        // No Authorization header.
+        formatex(header, charsmax(header),
+            "POST %s HTTP/1.0\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n",
+            uri, server, strlen(json));
+    }
 
     DPRINT(header);
     DPRINT(json);
@@ -1418,8 +1872,8 @@ public discord_post_result()
         g_socket = 0;
     }
 
-    // Send the request (using HTTP POST method)
-    g_socket = socket_open(DISCORD_PROXY, DISCORD_PROXY_PORT, SOCKET_TCP, error);
+    // Send the request (using HTTP POST method).
+    g_socket = socket_open(server, port, SOCKET_TCP, error);
     switch (error)
     {
         case 1:
@@ -1449,15 +1903,16 @@ public discord_post_result()
         return PLUGIN_CONTINUE;
     }
 
+    // Finally, send the request!
     socket_send(g_socket, header, strlen(header));
     socket_send(g_socket, json, strlen(json));
 
-    set_task(1.0, "discord_read_response");
+    set_task(1.0, "read_response");
 
     return PLUGIN_CONTINUE;
 }
 
-public discord_read_response()
+public read_response()
 {
     new response[256];
 
@@ -1478,14 +1933,13 @@ public discord_read_response()
         return PLUGIN_CONTINUE;
     }
 
-    // Get the data
+    // Get the data.
     socket_recv(g_socket, response, charsmax(response));
     DPRINT(response);
 
-    // Close the socket
+    // Close the socket.
     socket_close(g_socket);
     g_socket = 0;
 
     return PLUGIN_CONTINUE;
 }
-
